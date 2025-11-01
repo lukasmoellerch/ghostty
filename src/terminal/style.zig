@@ -1,6 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const configpkg = @import("../config.zig");
+const bold_color = @import("bold_color.zig");
 const color = @import("color.zig");
 const sgr = @import("sgr.zig");
 const page = @import("page.zig");
@@ -140,7 +140,7 @@ pub const Style = struct {
         palette: *const color.Palette,
 
         /// If specified, the color to use for bold text.
-        bold: ?configpkg.BoldColor = null,
+        bold: ?bold_color.BoldColor = null,
     };
 
     /// Returns the fg color for a cell with this style given the palette
@@ -158,7 +158,7 @@ pub const Style = struct {
                 if (self.flags.bold) {
                     if (opts.bold) |bold| switch (bold) {
                         .bright => {},
-                        .color => |v| break :default v.toTerminalRGB(),
+                        .color => |v| break :default v,
                     };
                 }
 
@@ -181,7 +181,7 @@ pub const Style = struct {
             .rgb => |rgb| rgb: {
                 if (self.flags.bold and rgb.eql(opts.default)) {
                     if (opts.bold) |bold| switch (bold) {
-                        .color => |v| break :rgb v.toTerminalRGB(),
+                        .color => |v| break :rgb v,
                         .bright => {},
                     };
                 }

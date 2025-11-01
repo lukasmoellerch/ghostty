@@ -7,10 +7,17 @@ const builtin = @import("builtin");
 const options = @import("build_options");
 const assert = std.debug.assert;
 const apprt = @import("apprt.zig");
-const font = @import("font/main.zig");
 const rendererpkg = @import("renderer.zig");
 const WasmTarget = @import("os/wasm/target.zig").Target;
 const BuildConfig = @import("build/Config.zig");
+
+// Only import font when not building for WASM (lib-vt builds use WASM)
+const font = if (!builtin.target.cpu.arch.isWasm())
+    @import("font/main.zig")
+else
+    struct {
+        pub const Backend = void;
+    };
 
 pub const ReleaseChannel = BuildConfig.ReleaseChannel;
 
@@ -83,8 +90,10 @@ pub const Artifact = enum {
 
     pub fn detect() Artifact {
         if (builtin.target.cpu.arch.isWasm()) {
-            assert(builtin.output_mode == .Obj);
-            assert(builtin.link_mode == .Static);
+            // WASM modules can be built as either Obj or Exe depending on
+            // the build system configuration (lib-vt uses Exe)
+            assert(builtin.output_mode == .Obj or builtin.output_mode == .Exe);
+            assert(builtin.link_mode == .static);
             return .wasm_module;
         }
 

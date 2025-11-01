@@ -4329,7 +4329,7 @@ fn compatBoldIsBright(
 
     const set = cli.args.parseBool(value_ orelse "t") catch return false;
     if (set) {
-        self.@"bold-color" = .bright;
+        self.@"bold-color" = .{ .value = .bright };
     }
 
     return true;
@@ -5013,23 +5013,35 @@ pub const TerminalColor = union(enum) {
 };
 
 /// Represents color values that can be used for bold. See `bold-color`.
-pub const BoldColor = union(enum) {
-    color: Color,
-    bright,
+pub const BoldColor = struct {
+    value: terminal_bold_color.BoldColor,
+
+    const terminal_bold_color = @import("../terminal/bold_color.zig");
+
+    pub fn toTerminalRGB(self: BoldColor) terminal.color.RGB {
+        return switch (self.value) {
+            .color => |rgb| rgb,
+            .bright => @panic("bright must be resolved to RGB before calling toTerminalRGB"),
+        };
+    }
 
     pub fn parseCLI(input_: ?[]const u8) !BoldColor {
         const input = input_ orelse return error.ValueRequired;
-        if (std.mem.eql(u8, input, "bright")) return .bright;
-        return .{ .color = try Color.parseCLI(input) };
+        if (std.mem.eql(u8, input, "bright")) return .{ .value = .bright };
+        const parsed_color = try Color.parseCLI(input);
+        return .{ .value = .{ .color = .{ .r = parsed_color.r, .g = parsed_color.g, .b = parsed_color.b } } };
     }
 
     /// Used by Formatter
     pub fn formatEntry(self: BoldColor, formatter: formatterpkg.EntryFormatter) !void {
-        switch (self) {
-            .color => try self.color.formatEntry(formatter),
+        switch (self.value) {
+            .color => |rgb| {
+                const cfg_color = Color{ .r = rgb.r, .g = rgb.g, .b = rgb.b };
+                try cfg_color.formatEntry(formatter);
+            },
             .bright => try formatter.formatEntry(
                 [:0]const u8,
-                @tagName(self),
+                "bright",
             ),
         }
     }
@@ -5037,18 +5049,14 @@ pub const BoldColor = union(enum) {
     test "parseCLI" {
         const testing = std.testing;
 
-        try testing.expectEqual(
-            BoldColor{ .color = Color{ .r = 78, .g = 42, .b = 132 } },
-            try BoldColor.parseCLI("#4e2a84"),
-        );
-        try testing.expectEqual(
-            BoldColor{ .color = Color{ .r = 0, .g = 0, .b = 0 } },
-            try BoldColor.parseCLI("black"),
-        );
-        try testing.expectEqual(
-            BoldColor.bright,
-            try BoldColor.parseCLI("bright"),
-        );
+        const purple = try BoldColor.parseCLI("#4e2a84");
+        try testing.expectEqual(terminal_bold_color.BoldColor{ .color = .{ .r = 78, .g = 42, .b = 132 } }, purple.value);
+
+        const black = try BoldColor.parseCLI("black");
+        try testing.expectEqual(terminal_bold_color.BoldColor{ .color = .{ .r = 0, .g = 0, .b = 0 } }, black.value);
+
+        const bright = try BoldColor.parseCLI("bright");
+        try testing.expectEqual(terminal_bold_color.BoldColor.bright, bright.value);
 
         try testing.expectError(error.InvalidValue, BoldColor.parseCLI("a"));
     }
@@ -5058,7 +5066,7 @@ pub const BoldColor = union(enum) {
         var buf: std.Io.Writer.Allocating = .init(testing.allocator);
         defer buf.deinit();
 
-        var sc: BoldColor = .bright;
+        var sc: BoldColor = .{ .value = .bright };
         try sc.formatEntry(formatterpkg.entryFormatter("a", &buf.writer));
         try testing.expectEqualSlices(u8, "a = bright\n", buf.written());
     }

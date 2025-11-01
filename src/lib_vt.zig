@@ -138,6 +138,17 @@ comptime {
         @export(&c.sgr_attribute_tag, .{ .name = "ghostty_sgr_attribute_tag" });
         @export(&c.sgr_attribute_value, .{ .name = "ghostty_sgr_attribute_value" });
 
+        @export(&c.terminal_new, .{ .name = "ghostty_terminal_new" });
+        @export(&c.terminal_free, .{ .name = "ghostty_terminal_free" });
+        @export(&c.terminal_write, .{ .name = "ghostty_terminal_write" });
+        @export(&c.terminal_get_size, .{ .name = "ghostty_terminal_get_size" });
+        @export(&c.terminal_get_cursor, .{ .name = "ghostty_terminal_get_cursor" });
+        @export(&c.terminal_get_cell, .{ .name = "ghostty_terminal_get_cell" });
+        @export(&c.terminal_clear, .{ .name = "ghostty_terminal_clear" });
+        @export(&c.terminal_reset, .{ .name = "ghostty_terminal_reset" });
+        @export(&c.terminal_resize, .{ .name = "ghostty_terminal_resize" });
+        @export(&c.terminal_get_title, .{ .name = "ghostty_terminal_get_title" });
+
         // On Wasm we need to export our allocator convenience functions.
         if (builtin.target.cpu.arch.isWasm()) {
             const alloc = @import("lib/allocator/convenience.zig");
@@ -151,6 +162,10 @@ comptime {
             @export(&alloc.freeU8, .{ .name = "ghostty_wasm_free_u8" });
             @export(&alloc.allocUsize, .{ .name = "ghostty_wasm_alloc_usize" });
             @export(&alloc.freeUsize, .{ .name = "ghostty_wasm_free_usize" });
+            @export(&alloc.allocU16, .{ .name = "ghostty_wasm_alloc_u16" });
+            @export(&alloc.freeU16, .{ .name = "ghostty_wasm_free_u16" });
+            @export(&alloc.allocU32, .{ .name = "ghostty_wasm_alloc_u32" });
+            @export(&alloc.freeU32, .{ .name = "ghostty_wasm_free_u32" });
             @export(&c.wasm_alloc_sgr_attribute, .{ .name = "ghostty_wasm_alloc_sgr_attribute" });
             @export(&c.wasm_free_sgr_attribute, .{ .name = "ghostty_wasm_free_sgr_attribute" });
         }
