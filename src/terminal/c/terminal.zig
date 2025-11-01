@@ -213,6 +213,77 @@ pub fn getCell(
     return true;
 }
 
+/// Get a cell at a specific position in viewport coordinates.
+/// x and y are relative to the current viewport (0,0 is top-left of visible area).
+/// This respects the current scroll position.
+/// Returns false if position is out of bounds.
+pub fn getCellViewport(
+    terminal_: CTerminal,
+    x: u16,
+    y: u16,
+    codepoint: *u32,
+    fg_r: *u8,
+    fg_g: *u8,
+    fg_b: *u8,
+    bg_r: *u8,
+    bg_g: *u8,
+    bg_b: *u8,
+    bold: *bool,
+    italic: *bool,
+    underline: *bool,
+) callconv(.c) bool {
+    const wrapper = terminal_ orelse return false;
+    const screen = &wrapper.terminal.screen;
+
+    if (y >= wrapper.terminal.rows or x >= wrapper.terminal.cols) {
+        return false;
+    }
+
+    const pin = screen.pages.pin(.{ .viewport = .{ .x = x, .y = y } }) orelse return false;
+
+    const rac = pin.rowAndCell();
+    const cell = rac.cell;
+
+    // Get codepoint based on content tag
+    codepoint.* = switch (cell.content_tag) {
+        .codepoint, .codepoint_grapheme => cell.content.codepoint,
+        else => 0,
+    };
+
+    // Get style from pin
+    const cell_style = pin.style(cell);
+
+    // Get color palette
+    const palette = &wrapper.terminal.colors.palette.current;
+
+    // Get default colors (fallback to white on black if not set)
+    const default_fg = wrapper.terminal.colors.foreground.get() orelse color.RGB{ .r = 255, .g = 255, .b = 255 };
+    const default_bg = wrapper.terminal.colors.background.get() orelse color.RGB{ .r = 0, .g = 0, .b = 0 };
+
+    // Get foreground color
+    const fg_color = cell_style.fg(.{
+        .default = default_fg,
+        .palette = palette,
+        .bold = null,
+    });
+    fg_r.* = fg_color.r;
+    fg_g.* = fg_color.g;
+    fg_b.* = fg_color.b;
+
+    // Get background color
+    const bg_color = cell_style.bg(cell, palette) orelse default_bg;
+    bg_r.* = bg_color.r;
+    bg_g.* = bg_color.g;
+    bg_b.* = bg_color.b;
+
+    // Get styles
+    bold.* = cell_style.flags.bold;
+    italic.* = cell_style.flags.italic;
+    underline.* = cell_style.flags.underline != .none;
+
+    return true;
+}
+
 /// Clear the terminal screen.
 pub fn clear(terminal_: CTerminal) callconv(.c) void {
     const wrapper = terminal_ orelse return;
@@ -255,4 +326,43 @@ pub fn getTitle(
 
     title_ptr.* = wrapper.stream.handler.title.ptr;
     title_len.* = wrapper.stream.handler.title_len;
+}
+
+/// Get scrollback information.
+/// Returns the total number of rows (including scrollback and visible rows),
+/// the current viewport offset, and the number of visible rows.
+pub fn getScrollback(
+    terminal_: CTerminal,
+    total_rows: *usize,
+    viewport_offset: *usize,
+    visible_rows: *usize,
+) callconv(.c) void {
+    const wrapper = terminal_ orelse {
+        total_rows.* = 0;
+        viewport_offset.* = 0;
+        visible_rows.* = 0;
+        return;
+    };
+
+    const screen = &wrapper.terminal.screen;
+    const sb = screen.pages.scrollbar();
+    total_rows.* = sb.total;
+    viewport_offset.* = sb.offset;
+    visible_rows.* = sb.len;
+}
+
+/// Set the viewport offset for scrolling.
+/// offset is the number of rows from the top of the scrollback buffer.
+/// Returns success if the viewport was updated.
+pub fn setViewportOffset(
+    terminal_: CTerminal,
+    offset: usize,
+) callconv(.c) Result {
+    const wrapper = terminal_ orelse return .invalid_value;
+    const screen = &wrapper.terminal.screen;
+
+    // Use the PageList scroll function to set viewport to the row offset
+    screen.pages.scroll(.{ .row = offset });
+
+    return .success;
 }

@@ -8,6 +8,8 @@ class GhosttyTerminal {
     this.ws = null;
     this.canvas = null;
     this.ctx = null;
+    this.container = null;
+    this.spacer = null;
     this.terminal = null; // WASM terminal instance
 
     // Terminal state - will be calculated based on window size
@@ -15,6 +17,11 @@ class GhosttyTerminal {
     this.rows = 24;
     this.cellWidth = 9;
     this.cellHeight = 18;
+
+    // Scrollback state
+    this.totalRows = 24;
+    this.viewportOffset = 0;
+    this.scrollMode = "auto"; // "auto" or "pinned"
 
     // Colors (simplified xterm-256)
     this.colors = {
@@ -34,11 +41,13 @@ class GhosttyTerminal {
     try {
       await this.loadWasm();
       this.calculateDimensions(); // Calculate initial dimensions
+      this.setupContainer();
       this.setupCanvas();
       this.initTerminal();
       this.setupWebSocket();
       this.setupInput();
       this.setupResizeHandler();
+      this.setupScrollHandler();
       this.startRenderLoop();
       this.hideLoading();
     } catch (error) {
@@ -112,7 +121,29 @@ class GhosttyTerminal {
     }
 
     this.terminal = new DataView(this.getBuffer()).getUint32(termPtrPtr, true);
+
+    // Initialize scrollback info
+    this.updateScrollbackInfo();
+
+    // Position canvas initially
+    this.positionCanvas();
+
     console.log("✅ Terminal initialized via libghostty-vt");
+  }
+
+  setupContainer() {
+    this.container = document.getElementById("terminal-container");
+    this.spacer = document.getElementById("scrollback-spacer");
+
+    // Set container height to exactly fit the terminal rows
+    const containerHeight = this.rows * this.cellHeight;
+    this.container.style.height = `${containerHeight}px`;
+
+    // Initialize spacer to create scrollable area
+    // This will be updated when we get scrollback info
+    this.spacer.style.height = `${containerHeight}px`;
+
+    console.log(`✅ Container initialized`);
   }
 
   setupCanvas() {
@@ -233,8 +264,38 @@ class GhosttyTerminal {
       console.error("Terminal write failed:", result);
     }
 
+    // Update scrollback info
+    this.updateScrollbackInfo();
+
+    // Auto-scroll to bottom if in auto mode
+    if (this.scrollMode === "auto") {
+      this.scrollToBottom();
+    } else {
+      // In pinned mode, adjust scroll position to keep viewing the same content
+      // The container height may have grown, so we need to maintain our position
+      this.positionCanvas();
+    }
+
     // Mark terminal as dirty and schedule a render
     this.scheduleRender();
+  }
+
+  scrollToBottom() {
+    // Scroll container to the bottom
+    this.container.scrollTop = this.container.scrollHeight;
+
+    // Tell libghostty we're viewing the active area (bottom)
+    const rowOffset = Math.floor(this.container.scrollTop / this.cellHeight);
+    this.wasmInstance.exports.ghostty_terminal_set_viewport_offset(
+      this.terminal,
+      rowOffset
+    );
+
+    // Position canvas to be visible
+    this.positionCanvas();
+
+    // Ensure we're in auto mode
+    this.scrollMode = "auto";
   }
 
   setupInput() {
@@ -331,6 +392,82 @@ class GhosttyTerminal {
     });
   }
 
+  setupScrollHandler() {
+    this.container.addEventListener("scroll", () => {
+      this.handleScroll();
+    });
+  }
+
+  handleScroll() {
+    const scrollTop = this.container.scrollTop;
+    const rowOffset = Math.floor(scrollTop / this.cellHeight);
+
+    // Check if we're at the bottom
+    const isAtBottom =
+      scrollTop + this.container.clientHeight >=
+      this.container.scrollHeight - 10;
+
+    // Update scroll mode
+    if (isAtBottom) {
+      this.scrollMode = "auto";
+    } else {
+      this.scrollMode = "pinned";
+    }
+
+    // Update viewport offset in libghostty
+    this.wasmInstance.exports.ghostty_terminal_set_viewport_offset(
+      this.terminal,
+      rowOffset
+    );
+
+    // Position canvas to be visible in viewport
+    this.positionCanvas();
+
+    // Trigger a re-render
+    this.scheduleRender();
+  }
+
+  positionCanvas() {
+    // Position canvas to always be visible at the top of the viewport
+    this.canvas.style.top = `${this.container.scrollTop}px`;
+  }
+
+  updateScrollbackInfo() {
+    // Get current scrollback state from terminal
+    const totalRowsPtr = this.wasmInstance.exports.ghostty_wasm_alloc_usize();
+    const viewportOffsetPtr =
+      this.wasmInstance.exports.ghostty_wasm_alloc_usize();
+    const visibleRowsPtr = this.wasmInstance.exports.ghostty_wasm_alloc_usize();
+
+    this.wasmInstance.exports.ghostty_terminal_get_scrollback(
+      this.terminal,
+      totalRowsPtr,
+      viewportOffsetPtr,
+      visibleRowsPtr
+    );
+
+    const totalRows = new Uint32Array(this.getBuffer(), totalRowsPtr, 1)[0];
+    const viewportOffset = new Uint32Array(
+      this.getBuffer(),
+      viewportOffsetPtr,
+      1
+    )[0];
+    const visibleRows = new Uint32Array(this.getBuffer(), visibleRowsPtr, 1)[0];
+
+    this.wasmInstance.exports.ghostty_wasm_free_usize(totalRowsPtr);
+    this.wasmInstance.exports.ghostty_wasm_free_usize(viewportOffsetPtr);
+    this.wasmInstance.exports.ghostty_wasm_free_usize(visibleRowsPtr);
+
+    // Update spacer height if total rows changed to create scrollable area
+    if (totalRows !== this.totalRows) {
+      this.totalRows = totalRows;
+      const totalHeight = totalRows * this.cellHeight;
+      this.spacer.style.height = `${totalHeight}px`;
+    }
+
+    this.viewportOffset = viewportOffset;
+  }
+
   handleResize() {
     const oldCols = this.cols;
     const oldRows = this.rows;
@@ -361,6 +498,13 @@ class GhosttyTerminal {
 
     // Resize the canvas
     this.resizeCanvas();
+
+    // Update container height to match new terminal size
+    const containerHeight = this.rows * this.cellHeight;
+    this.container.style.height = `${containerHeight}px`;
+
+    // Update scrollback info (terminal size affects scrollback calculations)
+    this.updateScrollbackInfo();
 
     // Notify the server
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -413,6 +557,9 @@ class GhosttyTerminal {
   }
 
   render() {
+    // Ensure canvas is positioned correctly before rendering
+    this.positionCanvas();
+
     // Clear canvas
     this.ctx.fillStyle = this.colors.bg;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -445,26 +592,27 @@ class GhosttyTerminal {
     const italicPtr = this.wasmInstance.exports.ghostty_wasm_alloc_u8();
     const underlinePtr = this.wasmInstance.exports.ghostty_wasm_alloc_u8();
 
-    // Render all cells in the active area
-    // getCell uses active area coordinates where (0,0) is top-left of active area
-    // This matches the cursor coordinates (cursor is always in active area)
+    // Render all cells in the viewport
+    // getCellViewport uses viewport coordinates where (0,0) is top-left of visible area
+    // This respects the current scroll position
     for (let y = 0; y < this.rows; y++) {
       for (let x = 0; x < this.cols; x++) {
-        const hasCell = this.wasmInstance.exports.ghostty_terminal_get_cell(
-          this.terminal,
-          x,
-          y,
-          codepointPtr,
-          fgRPtr,
-          fgGPtr,
-          fgBPtr,
-          bgRPtr,
-          bgGPtr,
-          bgBPtr,
-          boldPtr,
-          italicPtr,
-          underlinePtr
-        );
+        const hasCell =
+          this.wasmInstance.exports.ghostty_terminal_get_cell_viewport(
+            this.terminal,
+            x,
+            y,
+            codepointPtr,
+            fgRPtr,
+            fgGPtr,
+            fgBPtr,
+            bgRPtr,
+            bgGPtr,
+            bgBPtr,
+            boldPtr,
+            italicPtr,
+            underlinePtr
+          );
 
         if (!hasCell) continue;
 
@@ -513,11 +661,25 @@ class GhosttyTerminal {
     this.wasmInstance.exports.ghostty_wasm_free_u8(italicPtr);
     this.wasmInstance.exports.ghostty_wasm_free_u8(underlinePtr);
 
-    // Draw cursor (always visible, no blinking)
-    const px = cursorX * this.cellWidth;
-    const py = cursorY * this.cellHeight;
-    this.ctx.fillStyle = this.colors.cursor;
-    this.ctx.fillRect(px, py + this.cellHeight - 2, this.cellWidth, 2);
+    // Draw cursor only if we're viewing the active area
+    // The cursor is in active area coordinates, so we need to check if
+    // the active area is currently visible in the viewport
+    const activeAreaStart = this.totalRows - this.rows;
+    const isViewingActiveArea = this.viewportOffset >= activeAreaStart;
+
+    if (isViewingActiveArea) {
+      // Convert cursor from active area coordinates to viewport coordinates
+      // Active area starts at row 'activeAreaStart', viewport starts at 'viewportOffset'
+      const viewportCursorY = activeAreaStart + cursorY - this.viewportOffset;
+
+      // Only draw if cursor is within visible viewport
+      if (viewportCursorY >= 0 && viewportCursorY < this.rows) {
+        const px = cursorX * this.cellWidth;
+        const py = viewportCursorY * this.cellHeight;
+        this.ctx.fillStyle = this.colors.cursor;
+        this.ctx.fillRect(px, py + this.cellHeight - 2, this.cellWidth, 2);
+      }
+    }
   }
 
   scheduleRender() {

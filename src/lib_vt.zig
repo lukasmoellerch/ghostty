@@ -144,10 +144,13 @@ comptime {
         @export(&c.terminal_get_size, .{ .name = "ghostty_terminal_get_size" });
         @export(&c.terminal_get_cursor, .{ .name = "ghostty_terminal_get_cursor" });
         @export(&c.terminal_get_cell, .{ .name = "ghostty_terminal_get_cell" });
+        @export(&c.terminal_get_cell_viewport, .{ .name = "ghostty_terminal_get_cell_viewport" });
         @export(&c.terminal_clear, .{ .name = "ghostty_terminal_clear" });
         @export(&c.terminal_reset, .{ .name = "ghostty_terminal_reset" });
         @export(&c.terminal_resize, .{ .name = "ghostty_terminal_resize" });
         @export(&c.terminal_get_title, .{ .name = "ghostty_terminal_get_title" });
+        @export(&c.terminal_get_scrollback, .{ .name = "ghostty_terminal_get_scrollback" });
+        @export(&c.terminal_set_viewport_offset, .{ .name = "ghostty_terminal_set_viewport_offset" });
 
         // On Wasm we need to export our allocator convenience functions.
         if (builtin.target.cpu.arch.isWasm()) {

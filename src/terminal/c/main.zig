@@ -52,10 +52,13 @@ pub const terminal_write = terminal.write;
 pub const terminal_get_size = terminal.getSize;
 pub const terminal_get_cursor = terminal.getCursor;
 pub const terminal_get_cell = terminal.getCell;
+pub const terminal_get_cell_viewport = terminal.getCellViewport;
 pub const terminal_clear = terminal.clear;
 pub const terminal_reset = terminal.reset;
 pub const terminal_resize = terminal.resize;
 pub const terminal_get_title = terminal.getTitle;
+pub const terminal_get_scrollback = terminal.getScrollback;
+pub const terminal_set_viewport_offset = terminal.setViewportOffset;
 
 pub const key_encoder_new = key_encode.new;
 pub const key_encoder_free = key_encode.free;

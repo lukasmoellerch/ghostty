@@ -13,8 +13,22 @@
         }
 
         body {
-            background: #000;
+            background: black;
+            margin: 0;
+            padding: 0;
             overflow: hidden;
+        }
+
+        #terminal-container {
+            position: relative;
+            width: 100vw;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        #scrollback-spacer {
+            width: 1px;
+            pointer-events: none;
         }
 
         #terminal {
@@ -35,7 +49,10 @@
 </head>
 
 <body>
-    <canvas id="terminal"></canvas>
+    <div id="terminal-container">
+        <div id="scrollback-spacer"></div>
+        <canvas id="terminal"></canvas>
+    </div>
     <textarea id="input-capture" autocomplete="off" autocorrect="off" autocapitalize="off"
         spellcheck="false"></textarea>
     <script src="terminal.js"></script>
