@@ -135,12 +135,10 @@ class GhosttyTerminal {
     this.container = document.getElementById("terminal-container");
     this.spacer = document.getElementById("scrollback-spacer");
 
-    // Set container height to exactly fit the terminal rows
-    const containerHeight = this.rows * this.cellHeight;
-    this.container.style.height = `${containerHeight}px`;
-
+    // Container height is set to 100vh in CSS
     // Initialize spacer to create scrollable area
     // This will be updated when we get scrollback info
+    const containerHeight = this.container.clientHeight;
     this.spacer.style.height = `${containerHeight}px`;
 
     console.log(`✅ Container initialized`);
@@ -285,10 +283,11 @@ class GhosttyTerminal {
     this.container.scrollTop = this.container.scrollHeight;
 
     // Tell libghostty we're viewing the active area (bottom)
-    const rowOffset = Math.floor(this.container.scrollTop / this.cellHeight);
+    // Active area starts at (totalRows - rows)
+    const activeAreaOffset = Math.max(0, this.totalRows - this.rows);
     this.wasmInstance.exports.ghostty_terminal_set_viewport_offset(
       this.terminal,
-      rowOffset
+      activeAreaOffset
     );
 
     // Position canvas to be visible
@@ -400,7 +399,13 @@ class GhosttyTerminal {
 
   handleScroll() {
     const scrollTop = this.container.scrollTop;
-    const rowOffset = Math.floor(scrollTop / this.cellHeight);
+
+    // Calculate row offset from scroll position
+    // Clamp to valid range [0, totalRows - rows] since the active area
+    // is the bottom 'rows' rows and starts at (totalRows - rows)
+    const maxOffset = Math.max(0, this.totalRows - this.rows);
+    const rawOffset = Math.floor(scrollTop / this.cellHeight);
+    const rowOffset = Math.min(maxOffset, Math.max(0, rawOffset));
 
     // Check if we're at the bottom
     const isAtBottom =
@@ -419,6 +424,10 @@ class GhosttyTerminal {
       this.terminal,
       rowOffset
     );
+
+    // IMPORTANT: Update our cached viewport offset immediately
+    // Otherwise rendering will use the stale offset from the last output
+    this.viewportOffset = rowOffset;
 
     // Position canvas to be visible in viewport
     this.positionCanvas();
@@ -461,8 +470,13 @@ class GhosttyTerminal {
     // Update spacer height if total rows changed to create scrollable area
     if (totalRows !== this.totalRows) {
       this.totalRows = totalRows;
-      const totalHeight = totalRows * this.cellHeight;
-      this.spacer.style.height = `${totalHeight}px`;
+      const contentHeight = totalRows * this.cellHeight;
+      const containerHeight = this.container.clientHeight;
+      const terminalHeight = this.rows * this.cellHeight;
+      // Add spacing below to allow scrolling the last line to the top of viewport
+      const extraPadding = containerHeight - terminalHeight;
+      const spacerHeight = contentHeight + Math.max(0, extraPadding);
+      this.spacer.style.height = `${spacerHeight}px`;
     }
 
     this.viewportOffset = viewportOffset;
@@ -498,10 +512,6 @@ class GhosttyTerminal {
 
     // Resize the canvas
     this.resizeCanvas();
-
-    // Update container height to match new terminal size
-    const containerHeight = this.rows * this.cellHeight;
-    this.container.style.height = `${containerHeight}px`;
 
     // Update scrollback info (terminal size affects scrollback calculations)
     this.updateScrollbackInfo();
@@ -661,24 +671,23 @@ class GhosttyTerminal {
     this.wasmInstance.exports.ghostty_wasm_free_u8(italicPtr);
     this.wasmInstance.exports.ghostty_wasm_free_u8(underlinePtr);
 
-    // Draw cursor only if we're viewing the active area
-    // The cursor is in active area coordinates, so we need to check if
-    // the active area is currently visible in the viewport
+    // Draw cursor if it's visible in the current viewport
+    // Cursor coordinates are in active area coordinates (0,0 = top-left of active area)
+    // Active area is the bottom 'rows' rows of the scrollback where the cursor lives
     const activeAreaStart = this.totalRows - this.rows;
-    const isViewingActiveArea = this.viewportOffset >= activeAreaStart;
 
-    if (isViewingActiveArea) {
-      // Convert cursor from active area coordinates to viewport coordinates
-      // Active area starts at row 'activeAreaStart', viewport starts at 'viewportOffset'
-      const viewportCursorY = activeAreaStart + cursorY - this.viewportOffset;
+    // Convert cursor from active area coordinates to absolute scrollback coordinates
+    const cursorAbsoluteRow = activeAreaStart + cursorY;
 
-      // Only draw if cursor is within visible viewport
-      if (viewportCursorY >= 0 && viewportCursorY < this.rows) {
-        const px = cursorX * this.cellWidth;
-        const py = viewportCursorY * this.cellHeight;
-        this.ctx.fillStyle = this.colors.cursor;
-        this.ctx.fillRect(px, py + this.cellHeight - 2, this.cellWidth, 2);
-      }
+    // Convert to viewport coordinates (viewport shows rows viewportOffset to viewportOffset+rows-1)
+    const viewportCursorY = cursorAbsoluteRow - this.viewportOffset;
+
+    // Only draw if cursor is within visible viewport
+    if (viewportCursorY >= 0 && viewportCursorY < this.rows) {
+      const px = cursorX * this.cellWidth;
+      const py = viewportCursorY * this.cellHeight;
+      this.ctx.fillStyle = this.colors.cursor;
+      this.ctx.fillRect(px, py + this.cellHeight - 2, this.cellWidth, 2);
     }
   }
 
