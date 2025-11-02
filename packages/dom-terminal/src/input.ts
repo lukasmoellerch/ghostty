@@ -1,18 +1,7 @@
-/**
- * Terminal input handling
- */
-
-/**
- * Handle keyboard events and convert them to terminal sequences
- */
 export class InputHandler {
   private inputElement: HTMLTextAreaElement;
 
-  constructor(
-    container: HTMLElement,
-    private onData: (data: string) => void
-  ) {
-    // Create hidden input element
+  constructor(container: HTMLElement, private onData: (data: string) => void) {
     this.inputElement = document.createElement("textarea");
     this.inputElement.id = "ghostty-input-capture";
     this.inputElement.style.position = "absolute";
@@ -30,16 +19,12 @@ export class InputHandler {
   }
 
   private setupEventHandlers(container: HTMLElement): void {
-    // Focus input when clicking in terminal
     container.addEventListener("click", () => {
       this.focus();
     });
 
-    // Handle keyboard input
     this.inputElement.addEventListener("keydown", (e) => {
       let data: string | null = null;
-
-      // Handle special keys
       if (e.key === "Enter") {
         data = "\r";
         e.preventDefault();
@@ -98,7 +83,6 @@ export class InputHandler {
       }
     });
 
-    // Handle text input
     this.inputElement.addEventListener("input", (e) => {
       const event = e as InputEvent;
       if (event.data) {
@@ -107,24 +91,16 @@ export class InputHandler {
       this.inputElement.value = "";
     });
 
-    // Prevent losing focus
     this.inputElement.addEventListener("blur", () => {
       setTimeout(() => this.focus(), 100);
     });
   }
 
-  /**
-   * Focus the input element
-   */
   focus(): void {
     this.inputElement.focus();
   }
 
-  /**
-   * Clean up
-   */
   destroy(): void {
     this.inputElement.remove();
   }
 }
-

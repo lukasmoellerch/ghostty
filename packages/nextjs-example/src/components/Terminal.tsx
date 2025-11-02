@@ -65,28 +65,6 @@ export function Terminal({ wsUrl }: TerminalProps) {
 
         if (!mounted) return;
 
-        // Calculate initial size before creating terminal
-        const viewportWidth =
-          containerRef.current.clientWidth || window.innerWidth;
-        const viewportHeight =
-          containerRef.current.clientHeight || window.innerHeight;
-        const cellWidth = 9;
-        const cellHeight = 18;
-        const initialCols = Math.max(20, Math.floor(viewportWidth / cellWidth));
-        const initialRows = Math.max(
-          5,
-          Math.floor(viewportHeight / cellHeight)
-        );
-
-        // Send spawn message with initial size immediately
-        ws.send(
-          JSON.stringify({
-            type: "spawn",
-            cols: initialCols,
-            rows: initialRows,
-          })
-        );
-
         const io: TerminalIO = {
           onInput: (data) => {
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -98,32 +76,34 @@ export function Terminal({ wsUrl }: TerminalProps) {
               ws.send(JSON.stringify({ type: "resize", cols, rows }));
             }
           },
-          onOutput: (callback) => {
-            ws!.onmessage = (event) => {
-              try {
-                const message = JSON.parse(event.data);
-                if (message.type === "output") {
-                  callback(message.data);
-                } else if (message.type === "spawned") {
-                  console.log("PTY spawned:", message);
-                } else if (message.type === "exit") {
-                  console.log("PTY exited:", message);
-                }
-              } catch (err) {
-                console.error("Error handling message:", err);
-              }
-            };
-          },
         };
 
-        // Create terminal with the same size
-        terminal = new DOMTerminal(containerRef.current, exports, io, {
-          cellWidth,
-          cellHeight,
-          cols: initialCols,
-          rows: initialRows,
-        });
+        terminal = new DOMTerminal(containerRef.current, exports, io);
         terminalRef.current = terminal;
+
+        const { cols, rows } = terminal.getSize();
+        ws.send(
+          JSON.stringify({
+            type: "spawn",
+            cols,
+            rows,
+          })
+        );
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === "output") {
+              terminal!.handleOutput(message.data);
+            } else if (message.type === "spawned") {
+              console.log("PTY spawned:", message);
+            } else if (message.type === "exit") {
+              console.log("PTY exited:", message);
+            }
+          } catch (err) {
+            console.error("Error handling message:", err);
+          }
+        };
 
         setError(null);
       } catch (err) {

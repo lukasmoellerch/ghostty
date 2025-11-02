@@ -1,7 +1,3 @@
-/**
- * Main DOM terminal implementation
- */
-
 import type { GhosttyWasmExports } from "@ghostty/wasm-api";
 import { GhosttyTerminal } from "@ghostty/wasm-api";
 import type {
@@ -12,9 +8,6 @@ import type {
 import { WebGLRenderer } from "./renderer.js";
 import { InputHandler } from "./input.js";
 
-/**
- * DOM-based terminal using Ghostty WASM for rendering
- */
 export class DOMTerminal {
   private terminal: GhosttyTerminal;
   private renderer: WebGLRenderer;
@@ -34,48 +27,40 @@ export class DOMTerminal {
     handlers: TerminalEventHandlers = {}
   ) {
     this.container = containerElement;
-    this.cellWidth = config.cellWidth ?? 8;
-    this.cellHeight = config.cellHeight ?? 16;
 
-    // Setup container
+    const measured = this.measureCellDimensions(config);
+    this.cellWidth = measured.width;
+    this.cellHeight = measured.height;
+
     this.container.style.position = "relative";
     this.container.style.overflow = "auto";
 
-    // Create scrollback spacer
     this.spacer = document.createElement("div");
     this.spacer.id = "ghostty-scrollback-spacer";
     this.spacer.style.width = "1px";
     this.spacer.style.pointerEvents = "none";
     this.container.appendChild(this.spacer);
 
-    // Calculate terminal size
-    const { cols, rows } = this.calculateSize(config);
-
-    // Create terminal instance
+    const { cols, rows } = this.calculateSize();
     this.terminal = new GhosttyTerminal(wasmExports, cols, rows);
+    this.renderer = new WebGLRenderer(
+      this.container,
+      this.terminal,
+      this.cellWidth,
+      this.cellHeight,
+      config
+    );
 
-    // Create renderer
-    this.renderer = new WebGLRenderer(this.container, this.terminal, config);
-
-    // Setup input handling
     this.inputHandler = new InputHandler(this.container, (data) => {
       io.onInput(data);
     });
 
-    // Setup I/O
-    io.onOutput((data) => {
-      this.handleOutput(data);
-    });
-
-    // Setup event handlers
     this.setupScrollHandler();
     this.setupResizeHandler(io);
 
-    // Initial render
     this.updateScrollback();
     this.renderer.scheduleRender();
 
-    // Notify ready
     if (handlers.onReady) {
       handlers.onReady();
     }
@@ -86,14 +71,37 @@ export class DOMTerminal {
     this.inputHandler.focus();
   }
 
-  private calculateSize(config: TerminalConfig): {
-    cols: number;
-    rows: number;
+  private measureCellDimensions(config: TerminalConfig): {
+    width: number;
+    height: number;
   } {
-    if (config.cols && config.rows) {
-      return { cols: config.cols, rows: config.rows };
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to create canvas context for font measurement");
     }
 
+    const fontSize = config.fontSize ?? 16;
+    const fontFamily =
+      config.fontFamily ?? '"Menlo", "Monaco", "Courier New", monospace';
+    const pixelRatio = window.devicePixelRatio || 1;
+    const physicalFontSize = fontSize * pixelRatio;
+
+    ctx.font = `${physicalFontSize}px ${fontFamily}`;
+    ctx.textBaseline = "alphabetic";
+
+    const metrics = ctx.measureText("M");
+    const actualAscent = metrics.actualBoundingBoxAscent || physicalFontSize;
+    const actualDescent =
+      metrics.actualBoundingBoxDescent || physicalFontSize * 0.3;
+
+    return {
+      width: Math.ceil(metrics.width / pixelRatio),
+      height: Math.ceil((actualAscent + actualDescent) / pixelRatio),
+    };
+  }
+
+  private calculateSize(): { cols: number; rows: number } {
     const viewportWidth = this.container.clientWidth || window.innerWidth;
     const viewportHeight = this.container.clientHeight || window.innerHeight;
 
@@ -103,14 +111,13 @@ export class DOMTerminal {
     return { cols, rows };
   }
 
-  private handleOutput(data: string): void {
+  handleOutput(data: string): void {
     this.terminal.write(data);
     this.updateScrollback();
 
     if (this.scrollMode === "auto") {
       this.scrollToBottom();
     } else {
-      // In pinned mode, just position the canvas
       this.renderer.position(this.container.scrollTop);
     }
 
@@ -121,13 +128,11 @@ export class DOMTerminal {
     const scrollback = this.terminal.getScrollback();
     const size = this.terminal.getSize();
 
-    // Update renderer's cached state
     this.renderer.updateScrollState(
       scrollback.viewportOffset,
       scrollback.totalRows
     );
 
-    // Update spacer height
     const contentHeight = scrollback.totalRows * this.cellHeight;
     const containerHeight = this.container.clientHeight;
     const terminalHeight = size.rows * this.cellHeight;
@@ -140,13 +145,11 @@ export class DOMTerminal {
     this.container.scrollTop = this.container.scrollHeight;
     this.scrollMode = "auto";
 
-    // Get current scrollback and set viewport to bottom
     const scrollback = this.terminal.getScrollback();
     const size = this.terminal.getSize();
     const activeAreaOffset = Math.max(0, scrollback.totalRows - size.rows);
     this.terminal.setViewportOffset(activeAreaOffset);
 
-    // Update renderer state
     this.renderer.updateScrollState(activeAreaOffset, scrollback.totalRows);
     this.renderer.position(this.container.scrollTop);
   }
@@ -157,12 +160,10 @@ export class DOMTerminal {
       const size = this.terminal.getSize();
       const scrollback = this.terminal.getScrollback();
 
-      // Calculate row offset
       const maxOffset = Math.max(0, scrollback.totalRows - size.rows);
       const rawOffset = Math.floor(scrollTop / this.cellHeight);
       const rowOffset = Math.min(maxOffset, Math.max(0, rawOffset));
 
-      // Check if at bottom
       const isAtBottom =
         scrollTop + this.container.clientHeight >=
         this.container.scrollHeight - 10;
@@ -170,7 +171,6 @@ export class DOMTerminal {
       this.scrollMode = isAtBottom ? "auto" : "pinned";
       this.terminal.setViewportOffset(rowOffset);
 
-      // Update renderer's cached state immediately for smooth rendering
       this.renderer.updateScrollState(rowOffset, scrollback.totalRows);
       this.renderer.position(scrollTop);
       this.renderer.scheduleRender();
@@ -189,7 +189,7 @@ export class DOMTerminal {
 
   private handleResize(io: TerminalIO): void {
     const oldSize = this.terminal.getSize();
-    const { cols, rows } = this.calculateSize({});
+    const { cols, rows } = this.calculateSize();
 
     if (oldSize.cols === cols && oldSize.rows === rows) {
       return;
@@ -202,30 +202,18 @@ export class DOMTerminal {
     this.renderer.scheduleRender();
   }
 
-  /**
-   * Get the terminal title
-   */
   getTitle(): string {
     return this.terminal.getTitle();
   }
 
-  /**
-   * Focus the terminal input
-   */
   focus(): void {
     this.inputHandler.focus();
   }
 
-  /**
-   * Get terminal size
-   */
   getSize(): { cols: number; rows: number } {
     return this.terminal.getSize();
   }
 
-  /**
-   * Clean up resources
-   */
   destroy(): void {
     this.renderer.destroy();
     this.inputHandler.destroy();

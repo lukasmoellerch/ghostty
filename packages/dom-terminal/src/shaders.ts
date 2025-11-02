@@ -1,7 +1,3 @@
-/**
- * WebGL shaders for terminal rendering
- */
-
 export const vertexShaderSource = `
 precision mediump float;
 
