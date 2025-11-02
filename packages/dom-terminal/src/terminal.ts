@@ -9,7 +9,7 @@ import type {
   TerminalIO,
   TerminalEventHandlers,
 } from "./types.js";
-import { CanvasRenderer } from "./renderer.js";
+import { WebGLRenderer } from "./renderer.js";
 import { InputHandler } from "./input.js";
 
 /**
@@ -17,7 +17,7 @@ import { InputHandler } from "./input.js";
  */
 export class DOMTerminal {
   private terminal: GhosttyTerminal;
-  private renderer: CanvasRenderer;
+  private renderer: WebGLRenderer;
   private inputHandler: InputHandler;
   private container: HTMLElement;
   private spacer: HTMLDivElement;
@@ -34,8 +34,8 @@ export class DOMTerminal {
     handlers: TerminalEventHandlers = {}
   ) {
     this.container = containerElement;
-    this.cellWidth = config.cellWidth ?? 9;
-    this.cellHeight = config.cellHeight ?? 18;
+    this.cellWidth = config.cellWidth ?? 8;
+    this.cellHeight = config.cellHeight ?? 16;
 
     // Setup container
     this.container.style.position = "relative";
@@ -55,7 +55,7 @@ export class DOMTerminal {
     this.terminal = new GhosttyTerminal(wasmExports, cols, rows);
 
     // Create renderer
-    this.renderer = new CanvasRenderer(this.container, this.terminal, config);
+    this.renderer = new WebGLRenderer(this.container, this.terminal, config);
 
     // Setup input handling
     this.inputHandler = new InputHandler(this.container, (data) => {

@@ -169,21 +169,6 @@ export function Terminal({ wsUrl }: TerminalProps) {
         </div>
       )}
       <div
-        style={{
-          position: "fixed",
-          top: 10,
-          right: 10,
-          background: status === "Connected" ? "#00ff00" : "#666",
-          color: status === "Connected" ? "#000" : "#fff",
-          padding: "5px 10px",
-          borderRadius: "3px",
-          fontSize: "12px",
-          zIndex: 1000,
-        }}
-      >
-        {status}
-      </div>
-      <div
         ref={containerRef}
         style={{
           width: "100vw",
