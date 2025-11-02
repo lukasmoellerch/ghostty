@@ -1,0 +1,20 @@
+{
+  "name": "ghostty",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ghostty terminal emulator",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm run build --filter './packages/*'",
+    "build:wasm": "zig build lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall",
+    "dev:example": "pnpm run dev --filter '@ghostty/nextjs-example'",
+    "clean": "pnpm run clean --filter './packages/*'"
+  },
+  "keywords": [
+    "ghostty",
+    "terminal",
+    "emulator"
+  ],
+  "author": "Anysphere Inc.",
+  "license": "MIT"
+}

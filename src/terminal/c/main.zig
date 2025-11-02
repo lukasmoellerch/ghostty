@@ -53,6 +53,7 @@ pub const terminal_get_size = terminal.getSize;
 pub const terminal_get_cursor = terminal.getCursor;
 pub const terminal_get_cell = terminal.getCell;
 pub const terminal_get_cell_viewport = terminal.getCellViewport;
+pub const terminal_get_all_cells_viewport = terminal.getAllCellsViewport;
 pub const terminal_clear = terminal.clear;
 pub const terminal_reset = terminal.reset;
 pub const terminal_resize = terminal.resize;

@@ -366,3 +366,81 @@ pub fn setViewportOffset(
 
     return .success;
 }
+
+/// Get all cells in the viewport at once.
+/// Writes cell data to the provided buffer in row-major order (left-to-right, top-to-bottom).
+/// Each cell is 14 bytes: codepoint (u32), fg_r (u8), fg_g (u8), fg_b (u8),
+/// bg_r (u8), bg_g (u8), bg_b (u8), bold (u8), italic (u8), underline (u8), padding (u8).
+/// buffer must be at least cols * rows * 14 bytes.
+/// Returns false if buffer is null or terminal is invalid.
+pub fn getAllCellsViewport(
+    terminal_: CTerminal,
+    buffer: [*]u8,
+) callconv(.c) bool {
+    const wrapper = terminal_ orelse return false;
+    const screen = &wrapper.terminal.screen;
+    const cols = wrapper.terminal.cols;
+    const rows = wrapper.terminal.rows;
+
+    // Get color palette
+    const palette = &wrapper.terminal.colors.palette.current;
+
+    // Get default colors (fallback to white on black if not set)
+    const default_fg = wrapper.terminal.colors.foreground.get() orelse color.RGB{ .r = 255, .g = 255, .b = 255 };
+    const default_bg = wrapper.terminal.colors.background.get() orelse color.RGB{ .r = 0, .g = 0, .b = 0 };
+
+    var offset: usize = 0;
+    const cell_size = 14;
+
+    for (0..rows) |y| {
+        for (0..cols) |x| {
+            const pin = screen.pages.pin(.{ .viewport = .{ .x = @intCast(x), .y = @intCast(y) } }) orelse {
+                // Out of bounds cell - write zeros
+                @memset(buffer[offset..offset + cell_size], 0);
+                offset += cell_size;
+                continue;
+            };
+
+            const rac = pin.rowAndCell();
+            const cell = rac.cell;
+
+            // Get codepoint based on content tag
+            const codepoint_val: u32 = switch (cell.content_tag) {
+                .codepoint, .codepoint_grapheme => cell.content.codepoint,
+                else => 0,
+            };
+
+            // Get style from pin
+            const cell_style = pin.style(cell);
+
+            // Get foreground color
+            const fg_color = cell_style.fg(.{
+                .default = default_fg,
+                .palette = palette,
+                .bold = null,
+            });
+
+            // Get background color
+            const bg_color = cell_style.bg(cell, palette) orelse default_bg;
+
+            // Write cell data to buffer
+            const cell_ptr = @as(*[14]u8, @ptrCast(buffer + offset));
+            // Write codepoint as u32 (little-endian)
+            std.mem.writeInt(u32, cell_ptr[0..4], codepoint_val, .little);
+            cell_ptr[4] = fg_color.r;
+            cell_ptr[5] = fg_color.g;
+            cell_ptr[6] = fg_color.b;
+            cell_ptr[7] = bg_color.r;
+            cell_ptr[8] = bg_color.g;
+            cell_ptr[9] = bg_color.b;
+            cell_ptr[10] = if (cell_style.flags.bold) 1 else 0;
+            cell_ptr[11] = if (cell_style.flags.italic) 1 else 0;
+            cell_ptr[12] = if (cell_style.flags.underline != .none) 1 else 0;
+            cell_ptr[13] = 0; // padding
+
+            offset += cell_size;
+        }
+    }
+
+    return true;
+}
