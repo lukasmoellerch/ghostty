@@ -20,11 +20,7 @@ export class GhosttyTerminal {
   private _cols: number;
   private _rows: number;
 
-  constructor(
-    private exports: GhosttyWasmExports,
-    cols: number,
-    rows: number
-  ) {
+  constructor(private exports: GhosttyWasmExports, cols: number, rows: number) {
     this.memory = new WasmMemoryManager(exports);
     this._cols = cols;
     this._rows = rows;
@@ -70,7 +66,8 @@ export class GhosttyTerminal {
    * Write data to the terminal
    */
   write(data: string | Uint8Array): void {
-    const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+    const bytes =
+      typeof data === "string" ? new TextEncoder().encode(data) : data;
 
     const dataPtr = this.memory.allocU8Array(bytes.length);
     this.memory.copyToMemory(dataPtr, bytes);
@@ -216,15 +213,15 @@ export class GhosttyTerminal {
 
   /**
    * Get all cells in the viewport at once.
-   * Returns an array of TerminalCell objects in row-major order.
+   * Returns the raw buffer containing cell data in row-major order.
+   * Each cell is 14 bytes: codepoint(4), fg_r(1), fg_g(1), fg_b(1), bg_r(1), bg_g(1), bg_b(1), bold(1), italic(1), underline(1), padding(1)
    */
-  getAllCellsViewport(): TerminalCell[] {
+  getAllCellsViewport(): Uint8Array | null {
     const size = this.getSize();
     const totalCells = size.cols * size.rows;
-    const cellSize = 14; // bytes per cell
+    const cellSize = 14;
     const bufferSize = totalCells * cellSize;
 
-    // Allocate buffer in WASM memory
     const bufferPtr = this.memory.allocU8Array(bufferSize);
 
     const success = this.exports.ghostty_terminal_get_all_cells_viewport(
@@ -234,39 +231,12 @@ export class GhosttyTerminal {
 
     if (!success) {
       this.memory.freeU8Array(bufferPtr);
-      return [];
+      return null;
     }
 
-    // Read cell data from buffer
     const buffer = this.memory.copyFromMemory(bufferPtr, bufferSize);
-    const dataView = new DataView(buffer.buffer, buffer.byteOffset, bufferSize);
-    const cells: TerminalCell[] = [];
-
-    for (let i = 0; i < totalCells; i++) {
-      const offset = i * cellSize;
-      const codepoint = dataView.getUint32(offset, true); // true = little endian
-      const fgR = buffer[offset + 4];
-      const fgG = buffer[offset + 5];
-      const fgB = buffer[offset + 6];
-      const bgR = buffer[offset + 7];
-      const bgG = buffer[offset + 8];
-      const bgB = buffer[offset + 9];
-      const bold = buffer[offset + 10] !== 0;
-      const italic = buffer[offset + 11] !== 0;
-      const underline = buffer[offset + 12] !== 0;
-
-      cells.push({
-        codepoint,
-        fg: { r: fgR, g: fgG, b: fgB },
-        bg: { r: bgR, g: bgG, b: bgB },
-        bold,
-        italic,
-        underline,
-      });
-    }
-
     this.memory.freeU8Array(bufferPtr);
-    return cells;
+    return buffer;
   }
 
   /**
@@ -340,4 +310,3 @@ export class GhosttyTerminal {
     }
   }
 }
-

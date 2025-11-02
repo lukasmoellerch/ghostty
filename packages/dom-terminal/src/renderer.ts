@@ -165,12 +165,15 @@ export class WebGLRenderer {
   }
 
   render(): void {
+    const startTime = performance.now();
+
     this.position(this.container.scrollTop);
 
     const size = this.terminal.getSize();
-    const cells = this.terminal.getAllCellsViewport();
+    const cellBuffer = this.terminal.getAllCellsViewport();
 
     if (
+      !cellBuffer ||
       !this.backgroundData ||
       !this.foregroundData ||
       !this.glyphCoordData ||
@@ -179,7 +182,7 @@ export class WebGLRenderer {
       return;
     }
 
-    this.updateCellData(cells, size);
+    this.updateCellData(cellBuffer, size);
 
     if (this.atlasManager.getNeedsUpload()) {
       this.uploadAtlas();
@@ -187,6 +190,9 @@ export class WebGLRenderer {
 
     this.uploadCellDataTextures();
     this.drawFrame();
+
+    const renderTime = performance.now() - startTime;
+    console.log(`Frame rendered in ${renderTime.toFixed(2)}ms`);
   }
 
   getCellSize(): { width: number; height: number } {
@@ -366,7 +372,7 @@ export class WebGLRenderer {
   }
 
   private updateCellData(
-    cells: any[],
+    cellBuffer: Uint8Array,
     size: { cols: number; rows: number }
   ): void {
     if (
@@ -383,10 +389,27 @@ export class WebGLRenderer {
     const cursorAbsoluteRow = activeAreaStart + cursor.y;
     const viewportCursorY = cursorAbsoluteRow - this.cachedViewportOffset;
 
+    const dataView = new DataView(
+      cellBuffer.buffer,
+      cellBuffer.byteOffset,
+      cellBuffer.byteLength
+    );
+    const cellSize = 14;
+
     for (let y = 0; y < size.rows; y++) {
       for (let x = 0; x < size.cols; x++) {
         const cellIndex = y * size.cols + x;
-        const cell = cells[cellIndex];
+        const bufferOffset = cellIndex * cellSize;
+
+        const codepoint = dataView.getUint32(bufferOffset, true);
+        const fgR = cellBuffer[bufferOffset + 4];
+        const fgG = cellBuffer[bufferOffset + 5];
+        const fgB = cellBuffer[bufferOffset + 6];
+        const bgR = cellBuffer[bufferOffset + 7];
+        const bgG = cellBuffer[bufferOffset + 8];
+        const bgB = cellBuffer[bufferOffset + 9];
+        const bold = cellBuffer[bufferOffset + 10] !== 0;
+        const italic = cellBuffer[bufferOffset + 11] !== 0;
 
         const bgIdx = cellIndex * 3;
         const fgIdx = cellIndex * 3;
@@ -394,66 +417,47 @@ export class WebGLRenderer {
 
         const isCursor = x === cursor.x && y === viewportCursorY;
 
-        if (cell) {
-          if (isCursor) {
-            this.backgroundData[bgIdx] = cell.fg.r;
-            this.backgroundData[bgIdx + 1] = cell.fg.g;
-            this.backgroundData[bgIdx + 2] = cell.fg.b;
-            this.foregroundData[fgIdx] = cell.bg.r;
-            this.foregroundData[fgIdx + 1] = cell.bg.g;
-            this.foregroundData[fgIdx + 2] = cell.bg.b;
-          } else {
-            this.backgroundData[bgIdx] = cell.bg.r;
-            this.backgroundData[bgIdx + 1] = cell.bg.g;
-            this.backgroundData[bgIdx + 2] = cell.bg.b;
-            this.foregroundData[fgIdx] = cell.fg.r;
-            this.foregroundData[fgIdx + 1] = cell.fg.g;
-            this.foregroundData[fgIdx + 2] = cell.fg.b;
-          }
-
-          if (cell.codepoint && cell.codepoint !== 32) {
-            const glyph = this.atlasManager.getGlyph(
-              cell.codepoint,
-              this.fontSize,
-              this.fontFamily,
-              cell.bold,
-              cell.italic
-            );
-
-            const atlasSize = this.atlasManager.getAtlasSize();
-            const pixelU = Math.floor(glyph.u * atlasSize);
-            const pixelV = Math.floor(glyph.v * atlasSize);
-            const pixelWidth = Math.floor(glyph.width * atlasSize);
-            const pixelHeight = Math.floor(glyph.height * atlasSize);
-
-            this.glyphCoordData[glyphIdx] = (pixelU >> 8) & 0xff;
-            this.glyphCoordData[glyphIdx + 1] = pixelU & 0xff;
-            this.glyphCoordData[glyphIdx + 2] = (pixelV >> 8) & 0xff;
-            this.glyphCoordData[glyphIdx + 3] = pixelV & 0xff;
-
-            this.glyphSizeData![glyphIdx] = (pixelWidth >> 8) & 0xff;
-            this.glyphSizeData![glyphIdx + 1] = pixelWidth & 0xff;
-            this.glyphSizeData![glyphIdx + 2] = (pixelHeight >> 8) & 0xff;
-            this.glyphSizeData![glyphIdx + 3] = pixelHeight & 0xff;
-          } else {
-            this.glyphCoordData[glyphIdx] = 0;
-            this.glyphCoordData[glyphIdx + 1] = 0;
-            this.glyphCoordData[glyphIdx + 2] = 0;
-            this.glyphCoordData[glyphIdx + 3] = 0;
-            this.glyphSizeData![glyphIdx] = 0;
-            this.glyphSizeData![glyphIdx + 1] = 0;
-            this.glyphSizeData![glyphIdx + 2] = 0;
-            this.glyphSizeData![glyphIdx + 3] = 0;
-          }
+        if (isCursor) {
+          this.backgroundData[bgIdx] = fgR;
+          this.backgroundData[bgIdx + 1] = fgG;
+          this.backgroundData[bgIdx + 2] = fgB;
+          this.foregroundData[fgIdx] = bgR;
+          this.foregroundData[fgIdx + 1] = bgG;
+          this.foregroundData[fgIdx + 2] = bgB;
         } else {
-          this.backgroundData[bgIdx] = this.defaultBgColor[0];
-          this.backgroundData[bgIdx + 1] = this.defaultBgColor[1];
-          this.backgroundData[bgIdx + 2] = this.defaultBgColor[2];
+          this.backgroundData[bgIdx] = bgR;
+          this.backgroundData[bgIdx + 1] = bgG;
+          this.backgroundData[bgIdx + 2] = bgB;
+          this.foregroundData[fgIdx] = fgR;
+          this.foregroundData[fgIdx + 1] = fgG;
+          this.foregroundData[fgIdx + 2] = fgB;
+        }
 
-          this.foregroundData[fgIdx] = this.defaultFgColor[0];
-          this.foregroundData[fgIdx + 1] = this.defaultFgColor[1];
-          this.foregroundData[fgIdx + 2] = this.defaultFgColor[2];
+        if (codepoint && codepoint !== 32) {
+          const glyph = this.atlasManager.getGlyph(
+            codepoint,
+            this.fontSize,
+            this.fontFamily,
+            bold,
+            italic
+          );
 
+          const atlasSize = this.atlasManager.getAtlasSize();
+          const pixelU = Math.floor(glyph.u * atlasSize);
+          const pixelV = Math.floor(glyph.v * atlasSize);
+          const pixelWidth = Math.floor(glyph.width * atlasSize);
+          const pixelHeight = Math.floor(glyph.height * atlasSize);
+
+          this.glyphCoordData[glyphIdx] = (pixelU >> 8) & 0xff;
+          this.glyphCoordData[glyphIdx + 1] = pixelU & 0xff;
+          this.glyphCoordData[glyphIdx + 2] = (pixelV >> 8) & 0xff;
+          this.glyphCoordData[glyphIdx + 3] = pixelV & 0xff;
+
+          this.glyphSizeData![glyphIdx] = (pixelWidth >> 8) & 0xff;
+          this.glyphSizeData![glyphIdx + 1] = pixelWidth & 0xff;
+          this.glyphSizeData![glyphIdx + 2] = (pixelHeight >> 8) & 0xff;
+          this.glyphSizeData![glyphIdx + 3] = pixelHeight & 0xff;
+        } else {
           this.glyphCoordData[glyphIdx] = 0;
           this.glyphCoordData[glyphIdx + 1] = 0;
           this.glyphCoordData[glyphIdx + 2] = 0;
