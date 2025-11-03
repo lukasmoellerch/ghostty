@@ -143,6 +143,7 @@ comptime {
         @export(&c.terminal_write, .{ .name = "ghostty_terminal_write" });
         @export(&c.terminal_get_size, .{ .name = "ghostty_terminal_get_size" });
         @export(&c.terminal_get_cursor, .{ .name = "ghostty_terminal_get_cursor" });
+        @export(&c.terminal_get_cursor_visible, .{ .name = "ghostty_terminal_get_cursor_visible" });
         @export(&c.terminal_get_cell, .{ .name = "ghostty_terminal_get_cell" });
         @export(&c.terminal_get_cell_viewport, .{ .name = "ghostty_terminal_get_cell_viewport" });
         @export(&c.terminal_get_all_cells_viewport, .{ .name = "ghostty_terminal_get_all_cells_viewport" });

@@ -142,6 +142,16 @@ pub fn getCursor(
     y.* = @intCast(screen.cursor.y);
 }
 
+/// Get cursor visibility state.
+/// Returns true if the cursor is visible, false if hidden.
+pub fn getCursorVisible(
+    terminal_: CTerminal,
+) callconv(.c) bool {
+    const wrapper = terminal_ orelse return true;
+    const screen = wrapper.terminal.screen;
+    return !screen.cursor.style.flags.invisible;
+}
+
 /// Get a cell at a specific position in active area coordinates.
 /// x and y are relative to the active area (0,0 is top-left of active area).
 /// The active area is where the cursor lives and where programs can write.
@@ -369,9 +379,10 @@ pub fn setViewportOffset(
 
 /// Get all cells in the viewport at once.
 /// Writes cell data to the provided buffer in row-major order (left-to-right, top-to-bottom).
-/// Each cell is 14 bytes: codepoint (u32), fg_r (u8), fg_g (u8), fg_b (u8),
-/// bg_r (u8), bg_g (u8), bg_b (u8), bold (u8), italic (u8), underline (u8), padding (u8).
-/// buffer must be at least cols * rows * 14 bytes.
+/// Each cell is 16 bytes: codepoint (u32), fg_r (u8), fg_g (u8), fg_b (u8),
+/// bg_r (u8), bg_g (u8), bg_b (u8), bold (u8), italic (u8), underline (u8), wide (u8), padding (u8).
+/// wide field: 0=narrow(1 cell), 1=wide(2 cells), 2=spacer_tail, 3=spacer_head
+/// buffer must be at least cols * rows * 16 bytes.
 /// Returns false if buffer is null or terminal is invalid.
 pub fn getAllCellsViewport(
     terminal_: CTerminal,
@@ -390,7 +401,7 @@ pub fn getAllCellsViewport(
     const default_bg = wrapper.terminal.colors.background.get() orelse color.RGB{ .r = 0, .g = 0, .b = 0 };
 
     var offset: usize = 0;
-    const cell_size = 14;
+    const cell_size = 16;
 
     for (0..rows) |y| {
         for (0..cols) |x| {
@@ -424,7 +435,7 @@ pub fn getAllCellsViewport(
             const bg_color = cell_style.bg(cell, palette) orelse default_bg;
 
             // Write cell data to buffer
-            const cell_ptr = @as(*[14]u8, @ptrCast(buffer + offset));
+            const cell_ptr = @as(*[16]u8, @ptrCast(buffer + offset));
             // Write codepoint as u32 (little-endian)
             std.mem.writeInt(u32, cell_ptr[0..4], codepoint_val, .little);
             cell_ptr[4] = fg_color.r;
@@ -436,7 +447,9 @@ pub fn getAllCellsViewport(
             cell_ptr[10] = if (cell_style.flags.bold) 1 else 0;
             cell_ptr[11] = if (cell_style.flags.italic) 1 else 0;
             cell_ptr[12] = if (cell_style.flags.underline != .none) 1 else 0;
-            cell_ptr[13] = 0; // padding
+            cell_ptr[13] = @intFromEnum(cell.wide); // 0=narrow, 1=wide, 2=spacer_tail, 3=spacer_head
+            cell_ptr[14] = 0; // padding
+            cell_ptr[15] = 0; // padding
 
             offset += cell_size;
         }

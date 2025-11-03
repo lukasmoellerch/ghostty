@@ -30,6 +30,7 @@ uniform sampler2D u_backgroundTex;   // Background colors (RGB)
 uniform sampler2D u_foregroundTex;   // Foreground colors (RGB)
 uniform sampler2D u_glyphCoordTex;   // Glyph UV coords (16-bit: R=U_hi, G=U_lo, B=V_hi, A=V_lo)
 uniform sampler2D u_glyphSizeTex;    // Glyph size (16-bit: R=W_hi, G=W_lo, B=H_hi, A=H_lo)
+uniform sampler2D u_glyphFlagsTex;   // Glyph flags (0=use FG color, 1=use atlas color)
 
 uniform vec2 u_gridSize;             // Terminal grid size (cols, rows)
 uniform vec2 u_cellSize;             // Cell size in pixels
@@ -51,8 +52,10 @@ void main() {
   vec2 cellTexCoord = (cellIndex + 0.5) / u_gridSize;
   
   // Sample cell data
-  vec3 bgColor = texture2D(u_backgroundTex, cellTexCoord).rgb;
-  vec3 fgColor = texture2D(u_foregroundTex, cellTexCoord).rgb;
+  vec4 bgSample = texture2D(u_backgroundTex, cellTexCoord);
+  vec4 fgSample = texture2D(u_foregroundTex, cellTexCoord);
+  vec3 bgColor = bgSample.rgb;
+  vec3 fgColor = fgSample.rgb;
   vec4 glyphCoordData = texture2D(u_glyphCoordTex, cellTexCoord);
   vec4 glyphSizeData = texture2D(u_glyphSizeTex, cellTexCoord);
   
@@ -76,18 +79,28 @@ void main() {
   }
   
   // Calculate position within the cell (0-1)
-  // Use fractional part of cell coordinate
   vec2 posInCell = fract(v_cellCoord);
   
   // Map to glyph atlas coordinates
+  // The renderer pre-splits wide glyphs into left/right halves
+  // so we can use standard mapping here
   vec2 atlasCoord = glyphUV + posInCell * glyphSize;
   
-  // Sample glyph alpha from atlas
+  // Sample from atlas
   vec4 atlasSample = texture2D(u_glyphAtlas, atlasCoord);
-  float glyphAlpha = atlasSample.a;
   
-  // Blend foreground over background using glyph as alpha
-  vec3 finalColor = mix(bgColor, fgColor, glyphAlpha);
+  // Get glyph flags: 0 = use foreground color (text), 1 = use atlas color (emoji)
+  float isColorGlyph = texture2D(u_glyphFlagsTex, cellTexCoord).r;
+  
+  // Compute both rendering modes, then blend between them
+  // Text mode: foreground color blended over background using glyph alpha
+  vec3 textResult = mix(bgColor, fgColor, atlasSample.a);
+  
+  // Emoji mode: atlas RGB color blended over background using glyph alpha
+  vec3 emojiResult = mix(bgColor, atlasSample.rgb, atlasSample.a);
+  
+  // Mix between text and emoji rendering based on the flag
+  vec3 finalColor = mix(textResult, emojiResult, isColorGlyph);
   
   gl_FragColor = vec4(finalColor, 1.0);
 }

@@ -15,8 +15,8 @@ class GhosttyTerminal {
     // Terminal state - will be calculated based on window size
     this.cols = 80;
     this.rows = 24;
-    this.cellWidth = 9;
-    this.cellHeight = 18;
+    this.cellWidth = 7;
+    this.cellHeight = 14;
 
     // Scrollback state
     this.totalRows = 24;
@@ -167,7 +167,7 @@ class GhosttyTerminal {
     this.ctx.scale(this.pixelRatio, this.pixelRatio);
 
     // Set up font
-    this.ctx.font = '16px "Menlo", "Monaco", "Courier New", monospace';
+    this.ctx.font = '12px "Menlo", "Monaco", "Courier New", monospace';
     this.ctx.textBaseline = "top";
 
     console.log(
@@ -549,7 +549,7 @@ class GhosttyTerminal {
     this.ctx.scale(this.pixelRatio, this.pixelRatio);
 
     // Re-apply font settings
-    this.ctx.font = '16px "Menlo", "Monaco", "Courier New", monospace';
+    this.ctx.font = '12px "Menlo", "Monaco", "Courier New", monospace';
     this.ctx.textBaseline = "top";
 
     console.log(`Canvas resized to ${this.cols}x${this.rows}`);
@@ -652,7 +652,7 @@ class GhosttyTerminal {
           this.ctx.fillStyle = `rgb(${fgR}, ${fgG}, ${fgB})`;
           const fontStyle = bold ? "bold " : "";
           const fontVariant = italic ? "italic " : "";
-          this.ctx.font = `${fontVariant}${fontStyle}16px "Menlo", "Monaco", "Courier New", monospace`;
+          this.ctx.font = `${fontVariant}${fontStyle}12px "Menlo", "Monaco", "Courier New", monospace`;
           const char = String.fromCodePoint(codepoint);
           this.ctx.fillText(char, px + 1, py + 1);
         }

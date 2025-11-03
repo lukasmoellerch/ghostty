@@ -78,7 +78,9 @@ export function Terminal({ wsUrl }: TerminalProps) {
           },
         };
 
-        terminal = new DOMTerminal(containerRef.current, exports, io);
+        terminal = new DOMTerminal(containerRef.current, exports, io, {
+          fontSize: 12,
+        });
         terminalRef.current = terminal;
 
         const { cols, rows } = terminal.getSize();

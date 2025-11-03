@@ -11,6 +11,11 @@ interface GlyphInfo {
   v: number;
   width: number;
   height: number;
+  // Physical width of the glyph in cells (1 for normal, 2 for wide characters)
+  cellWidth: number;
+  // Whether this glyph is a color glyph (emoji) vs grayscale (text)
+  // true = use atlas RGB colors, false = use foreground color
+  isColorGlyph: boolean;
 }
 
 export class TextureAtlasManager {
@@ -80,7 +85,8 @@ export class TextureAtlasManager {
     fontSize: number,
     fontFamily: string,
     bold: boolean = false,
-    italic: boolean = false
+    italic: boolean = false,
+    cellWidth: number = 1
   ): GlyphInfo {
     const key = this.makeKey(codepoint, fontSize, fontFamily, bold, italic);
 
@@ -93,7 +99,7 @@ export class TextureAtlasManager {
       this.measureCellDimensions(fontSize, fontFamily, bold, italic);
     }
 
-    return this.renderGlyph(codepoint, fontSize, fontFamily, bold, italic);
+    return this.renderGlyph(codepoint, fontSize, fontFamily, bold, italic, cellWidth);
   }
 
   private measureCellDimensions(
@@ -156,7 +162,8 @@ export class TextureAtlasManager {
     fontSize: number,
     fontFamily: string,
     bold: boolean,
-    italic: boolean
+    italic: boolean,
+    cellWidth: number = 1
   ): GlyphInfo {
     const physicalFontSize = fontSize * this.pixelRatio;
     const fontStyle = italic ? "italic " : "";
@@ -166,7 +173,13 @@ export class TextureAtlasManager {
     this.atlasCtx.fillStyle = "white";
 
     const char = String.fromCodePoint(codepoint);
-    const allocWidth = this.allocatedCellWidth;
+    
+    // Detect if this is likely an emoji (color glyph)
+    // Emojis are typically in specific Unicode ranges
+    const isEmoji = this.isEmojiCodepoint(codepoint);
+    
+    // Wide characters get double the allocated width
+    const allocWidth = this.allocatedCellWidth * cellWidth;
     const allocHeight = this.allocatedCellHeight;
 
     if (this.currentX + allocWidth > this.atlasSize) {
@@ -212,8 +225,10 @@ export class TextureAtlasManager {
     const info: GlyphInfo = {
       u: renderableX / this.atlasSize,
       v: renderableY / this.atlasSize,
-      width: this.renderableCellWidth / this.atlasSize,
+      width: (this.renderableCellWidth * cellWidth) / this.atlasSize,
       height: this.renderableCellHeight / this.atlasSize,
+      cellWidth: cellWidth,
+      isColorGlyph: isEmoji,
     };
 
     this.currentX += allocWidth;
@@ -239,4 +254,22 @@ export class TextureAtlasManager {
     this.cellBaseline = 0;
     this.needsUpload = true;
   }
+
+  /**
+   * Check if a codepoint is likely an emoji (color glyph).
+   * Based on common emoji Unicode ranges.
+   */
+  private isEmojiCodepoint(cp: number): boolean {
+    return (
+      (cp >= 0x1f300 && cp <= 0x1f9ff) || // Misc Symbols and Pictographs, Emoticons, Transport
+      (cp >= 0x2600 && cp <= 0x27bf) ||   // Misc symbols
+      (cp >= 0x1f600 && cp <= 0x1f64f) || // Emoticons
+      (cp >= 0x1f680 && cp <= 0x1f6ff) || // Transport and Map
+      (cp >= 0x2700 && cp <= 0x27bf) ||   // Dingbats
+      (cp >= 0x1f900 && cp <= 0x1f9ff) || // Supplemental Symbols and Pictographs
+      (cp >= 0x1fa70 && cp <= 0x1faff) || // Symbols and Pictographs Extended-A
+      (cp >= 0x1f1e6 && cp <= 0x1f1ff)    // Regional indicator symbols (flags)
+    );
+  }
 }
+

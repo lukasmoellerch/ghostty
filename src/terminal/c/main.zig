@@ -51,6 +51,7 @@ pub const terminal_free = terminal.free;
 pub const terminal_write = terminal.write;
 pub const terminal_get_size = terminal.getSize;
 pub const terminal_get_cursor = terminal.getCursor;
+pub const terminal_get_cursor_visible = terminal.getCursorVisible;
 pub const terminal_get_cell = terminal.getCell;
 pub const terminal_get_cell_viewport = terminal.getCellViewport;
 pub const terminal_get_all_cells_viewport = terminal.getAllCellsViewport;

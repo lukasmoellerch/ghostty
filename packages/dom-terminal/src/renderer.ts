@@ -29,11 +29,13 @@ export class WebGLRenderer {
   private foregroundTexture: WebGLTexture;
   private glyphCoordTexture: WebGLTexture;
   private glyphSizeTexture: WebGLTexture;
+  private glyphFlagsTexture: WebGLTexture;
 
   private backgroundData: Uint8Array | null = null;
   private foregroundData: Uint8Array | null = null;
   private glyphCoordData: Uint8Array | null = null;
   private glyphSizeData: Uint8Array | null = null;
+  private glyphFlagsData: Uint8Array | null = null;
 
   private gridCols = 0;
   private gridRows = 0;
@@ -47,6 +49,7 @@ export class WebGLRenderer {
     foregroundTex: WebGLUniformLocation | null;
     glyphCoordTex: WebGLUniformLocation | null;
     glyphSizeTex: WebGLUniformLocation | null;
+    glyphFlagsTex: WebGLUniformLocation | null;
   };
 
   constructor(
@@ -99,6 +102,7 @@ export class WebGLRenderer {
     this.foregroundTexture = this.createTexture();
     this.glyphCoordTexture = this.createTexture();
     this.glyphSizeTexture = this.createTexture();
+    this.glyphFlagsTexture = this.createTexture();
 
     this.uniforms = {
       resolution: gl.getUniformLocation(this.program, "u_resolution"),
@@ -109,6 +113,7 @@ export class WebGLRenderer {
       foregroundTex: gl.getUniformLocation(this.program, "u_foregroundTex"),
       glyphCoordTex: gl.getUniformLocation(this.program, "u_glyphCoordTex"),
       glyphSizeTex: gl.getUniformLocation(this.program, "u_glyphSizeTex"),
+      glyphFlagsTex: gl.getUniformLocation(this.program, "u_glyphFlagsTex"),
     };
 
     this.container.appendChild(this.canvas);
@@ -137,6 +142,7 @@ export class WebGLRenderer {
       this.foregroundData = new Uint8Array(cellCount * 3);
       this.glyphCoordData = new Uint8Array(cellCount * 4);
       this.glyphSizeData = new Uint8Array(cellCount * 4);
+      this.glyphFlagsData = new Uint8Array(cellCount); // 1 byte per cell: 0=use FG, 255=use atlas color
 
       this.initializeDataTextures();
     }
@@ -211,6 +217,7 @@ export class WebGLRenderer {
     gl.deleteTexture(this.foregroundTexture);
     gl.deleteTexture(this.glyphCoordTexture);
     gl.deleteTexture(this.glyphSizeTexture);
+    gl.deleteTexture(this.glyphFlagsTexture);
     gl.deleteProgram(this.program);
 
     this.canvas.remove();
@@ -310,7 +317,8 @@ export class WebGLRenderer {
       !this.backgroundData ||
       !this.foregroundData ||
       !this.glyphCoordData ||
-      !this.glyphSizeData
+      !this.glyphSizeData ||
+      !this.glyphFlagsData
     ) {
       console.error("Cannot initialize textures: data buffers are null");
       return;
@@ -369,6 +377,19 @@ export class WebGLRenderer {
       gl.UNSIGNED_BYTE,
       this.glyphSizeData
     );
+
+    gl.bindTexture(gl.TEXTURE_2D, this.glyphFlagsTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.LUMINANCE,
+      this.gridCols,
+      this.gridRows,
+      0,
+      gl.LUMINANCE,
+      gl.UNSIGNED_BYTE,
+      this.glyphFlagsData
+    );
   }
 
   private updateCellData(
@@ -385,6 +406,7 @@ export class WebGLRenderer {
     }
 
     const cursor = this.terminal.getCursor();
+    const cursorVisible = this.terminal.getCursorVisible();
     const activeAreaStart = this.cachedTotalRows - size.rows;
     const cursorAbsoluteRow = activeAreaStart + cursor.y;
     const viewportCursorY = cursorAbsoluteRow - this.cachedViewportOffset;
@@ -394,7 +416,13 @@ export class WebGLRenderer {
       cellBuffer.byteOffset,
       cellBuffer.byteLength
     );
-    const cellSize = 14;
+    const cellSize = 16; // Updated from 14 to 16 bytes
+
+    // Cell.Wide enum values: 0=narrow, 1=wide, 2=spacer_tail, 3=spacer_head
+    const WIDE_NARROW = 0;
+    const WIDE_WIDE = 1;
+    const WIDE_SPACER_TAIL = 2;
+    // const WIDE_SPACER_HEAD = 3; // Not used in rendering
 
     for (let y = 0; y < size.rows; y++) {
       for (let x = 0; x < size.cols; x++) {
@@ -410,12 +438,13 @@ export class WebGLRenderer {
         const bgB = cellBuffer[bufferOffset + 9];
         const bold = cellBuffer[bufferOffset + 10] !== 0;
         const italic = cellBuffer[bufferOffset + 11] !== 0;
+        const wide = cellBuffer[bufferOffset + 13]; // wide field at byte 13
 
         const bgIdx = cellIndex * 3;
         const fgIdx = cellIndex * 3;
         const glyphIdx = cellIndex * 4;
 
-        const isCursor = x === cursor.x && y === viewportCursorY;
+        const isCursor = cursorVisible && x === cursor.x && y === viewportCursorY;
 
         if (isCursor) {
           this.backgroundData[bgIdx] = fgR;
@@ -433,20 +462,91 @@ export class WebGLRenderer {
           this.foregroundData[fgIdx + 2] = fgB;
         }
 
+        // For spacer cells, we need to render the right half of the preceding wide character
+        // Look back one cell to get the wide character's glyph info
+        if (wide === WIDE_SPACER_TAIL && x > 0) {
+          const prevCellIndex = y * size.cols + (x - 1);
+          const prevBufferOffset = prevCellIndex * cellSize;
+          const prevCodepoint = dataView.getUint32(prevBufferOffset, true);
+          const prevWide = cellBuffer[prevBufferOffset + 13];
+          
+          // Verify the previous cell is actually a wide character
+          if (prevWide === WIDE_WIDE && prevCodepoint && prevCodepoint !== 32) {
+            const prevBold = cellBuffer[prevBufferOffset + 10] !== 0;
+            const prevItalic = cellBuffer[prevBufferOffset + 11] !== 0;
+            
+            // Get the same glyph as the wide character
+            const glyph = this.atlasManager.getGlyph(
+              prevCodepoint,
+              this.fontSize,
+              this.fontFamily,
+              prevBold,
+              prevItalic,
+              2  // cellWidth = 2 for wide characters
+            );
+
+            const atlasSize = this.atlasManager.getAtlasSize();
+            
+            // For the spacer cell, we offset the U coordinate by half the glyph width
+            // This shows the right half of the wide glyph
+            const halfWidthPixels = Math.floor((glyph.width * atlasSize) / 2);
+            const pixelU = Math.floor(glyph.u * atlasSize) + halfWidthPixels;
+            const pixelV = Math.floor(glyph.v * atlasSize);
+            const pixelWidth = halfWidthPixels;  // Right half only
+            const pixelHeight = Math.floor(glyph.height * atlasSize);
+
+            this.glyphCoordData[glyphIdx] = (pixelU >> 8) & 0xff;
+            this.glyphCoordData[glyphIdx + 1] = pixelU & 0xff;
+            this.glyphCoordData[glyphIdx + 2] = (pixelV >> 8) & 0xff;
+            this.glyphCoordData[glyphIdx + 3] = pixelV & 0xff;
+
+            this.glyphSizeData![glyphIdx] = (pixelWidth >> 8) & 0xff;
+            this.glyphSizeData![glyphIdx + 1] = pixelWidth & 0xff;
+            this.glyphSizeData![glyphIdx + 2] = (pixelHeight >> 8) & 0xff;
+            this.glyphSizeData![glyphIdx + 3] = pixelHeight & 0xff;
+            
+            // Set flags: 255 if color glyph (emoji), 0 if text (use FG color)
+            this.glyphFlagsData![cellIndex] = glyph.isColorGlyph ? 255 : 0;
+            continue;
+          }
+          
+          // If previous cell wasn't wide, just skip this spacer
+          this.glyphCoordData[glyphIdx] = 0;
+          this.glyphCoordData[glyphIdx + 1] = 0;
+          this.glyphCoordData[glyphIdx + 2] = 0;
+          this.glyphCoordData[glyphIdx + 3] = 0;
+          this.glyphSizeData![glyphIdx] = 0;
+          this.glyphSizeData![glyphIdx + 1] = 0;
+          this.glyphSizeData![glyphIdx + 2] = 0;
+          this.glyphSizeData![glyphIdx + 3] = 0;
+          this.glyphFlagsData![cellIndex] = 0;
+          continue;
+        }
+
         if (codepoint && codepoint !== 32) {
+          // Determine cell width: 2 for wide characters, 1 for normal
+          const cellWidth = wide === WIDE_WIDE ? 2 : 1;
+
           const glyph = this.atlasManager.getGlyph(
             codepoint,
             this.fontSize,
             this.fontFamily,
             bold,
-            italic
+            italic,
+            cellWidth
           );
 
           const atlasSize = this.atlasManager.getAtlasSize();
-          const pixelU = Math.floor(glyph.u * atlasSize);
+          let pixelU = Math.floor(glyph.u * atlasSize);
           const pixelV = Math.floor(glyph.v * atlasSize);
-          const pixelWidth = Math.floor(glyph.width * atlasSize);
+          let pixelWidth = Math.floor(glyph.width * atlasSize);
           const pixelHeight = Math.floor(glyph.height * atlasSize);
+
+          // For wide characters, we only render the left half in this cell
+          // The right half will be rendered in the spacer cell
+          if (wide === WIDE_WIDE) {
+            pixelWidth = Math.floor(pixelWidth / 2);
+          }
 
           this.glyphCoordData[glyphIdx] = (pixelU >> 8) & 0xff;
           this.glyphCoordData[glyphIdx + 1] = pixelU & 0xff;
@@ -457,6 +557,9 @@ export class WebGLRenderer {
           this.glyphSizeData![glyphIdx + 1] = pixelWidth & 0xff;
           this.glyphSizeData![glyphIdx + 2] = (pixelHeight >> 8) & 0xff;
           this.glyphSizeData![glyphIdx + 3] = pixelHeight & 0xff;
+          
+          // Set flags: 255 if color glyph (emoji), 0 if text (use FG color)
+          this.glyphFlagsData![cellIndex] = glyph.isColorGlyph ? 255 : 0;
         } else {
           this.glyphCoordData[glyphIdx] = 0;
           this.glyphCoordData[glyphIdx + 1] = 0;
@@ -466,6 +569,7 @@ export class WebGLRenderer {
           this.glyphSizeData![glyphIdx + 1] = 0;
           this.glyphSizeData![glyphIdx + 2] = 0;
           this.glyphSizeData![glyphIdx + 3] = 0;
+          this.glyphFlagsData![cellIndex] = 0;
         }
       }
     }
@@ -498,7 +602,8 @@ export class WebGLRenderer {
       !this.backgroundData ||
       !this.foregroundData ||
       !this.glyphCoordData ||
-      !this.glyphSizeData
+      !this.glyphSizeData ||
+      !this.glyphFlagsData
     ) {
       return;
     }
@@ -556,6 +661,19 @@ export class WebGLRenderer {
       gl.UNSIGNED_BYTE,
       this.glyphSizeData
     );
+
+    gl.bindTexture(gl.TEXTURE_2D, this.glyphFlagsTexture);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      this.gridCols,
+      this.gridRows,
+      gl.LUMINANCE,
+      gl.UNSIGNED_BYTE,
+      this.glyphFlagsData
+    );
   }
 
   private drawFrame(): void {
@@ -598,6 +716,10 @@ export class WebGLRenderer {
     gl.activeTexture(gl.TEXTURE4);
     gl.bindTexture(gl.TEXTURE_2D, this.glyphSizeTexture);
     gl.uniform1i(this.uniforms.glyphSizeTex, 4);
+
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, this.glyphFlagsTexture);
+    gl.uniform1i(this.uniforms.glyphFlagsTex, 5);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
     const positionLoc = gl.getAttribLocation(this.program, "a_position");

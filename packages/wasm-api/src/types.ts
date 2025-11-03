@@ -46,6 +46,7 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
     xPtr: number,
     yPtr: number
   ): void;
+  ghostty_terminal_get_cursor_visible(terminal: number): boolean;
   ghostty_terminal_get_cell_viewport(
     terminal: number,
     x: number,

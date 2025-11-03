@@ -136,6 +136,14 @@ export class GhosttyTerminal {
   }
 
   /**
+   * Get cursor visibility state
+   * Returns true if the cursor is visible, false if hidden
+   */
+  getCursorVisible(): boolean {
+    return this.exports.ghostty_terminal_get_cursor_visible(this.terminalPtr);
+  }
+
+  /**
    * Get cell data at viewport coordinates
    */
   getCellViewport(x: number, y: number): TerminalCell | null {
@@ -214,12 +222,14 @@ export class GhosttyTerminal {
   /**
    * Get all cells in the viewport at once.
    * Returns the raw buffer containing cell data in row-major order.
-   * Each cell is 14 bytes: codepoint(4), fg_r(1), fg_g(1), fg_b(1), bg_r(1), bg_g(1), bg_b(1), bold(1), italic(1), underline(1), padding(1)
+   * Each cell is 16 bytes: codepoint(4), fg_r(1), fg_g(1), fg_b(1), bg_r(1), bg_g(1), bg_b(1), 
+   * bold(1), italic(1), underline(1), wide(1), padding(2)
+   * wide field: 0=narrow(1 cell), 1=wide(2 cells), 2=spacer_tail, 3=spacer_head
    */
   getAllCellsViewport(): Uint8Array | null {
     const size = this.getSize();
     const totalCells = size.cols * size.rows;
-    const cellSize = 14;
+    const cellSize = 16;
     const bufferSize = totalCells * cellSize;
 
     const bufferPtr = this.memory.allocU8Array(bufferSize);
