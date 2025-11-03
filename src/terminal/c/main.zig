@@ -4,6 +4,7 @@ pub const key_event = @import("key_event.zig");
 pub const key_encode = @import("key_encode.zig");
 pub const paste = @import("paste.zig");
 pub const sgr = @import("sgr.zig");
+pub const terminal = @import("terminal.zig");
 
 // The full C API, unexported.
 pub const osc_new = osc.new;
@@ -44,6 +45,22 @@ pub const key_event_set_utf8 = key_event.set_utf8;
 pub const key_event_get_utf8 = key_event.get_utf8;
 pub const key_event_set_unshifted_codepoint = key_event.set_unshifted_codepoint;
 pub const key_event_get_unshifted_codepoint = key_event.get_unshifted_codepoint;
+
+pub const terminal_new = terminal.new;
+pub const terminal_free = terminal.free;
+pub const terminal_write = terminal.write;
+pub const terminal_get_size = terminal.getSize;
+pub const terminal_get_cursor = terminal.getCursor;
+pub const terminal_get_cursor_visible = terminal.getCursorVisible;
+pub const terminal_get_cell = terminal.getCell;
+pub const terminal_get_cell_viewport = terminal.getCellViewport;
+pub const terminal_get_all_cells_viewport = terminal.getAllCellsViewport;
+pub const terminal_clear = terminal.clear;
+pub const terminal_reset = terminal.reset;
+pub const terminal_resize = terminal.resize;
+pub const terminal_get_title = terminal.getTitle;
+pub const terminal_get_scrollback = terminal.getScrollback;
+pub const terminal_set_viewport_offset = terminal.setViewportOffset;
 
 pub const key_encoder_new = key_encode.new;
 pub const key_encoder_free = key_encode.free;

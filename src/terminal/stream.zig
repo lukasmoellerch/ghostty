@@ -1900,7 +1900,12 @@ pub fn Stream(comptime Handler: type) type {
                 },
 
                 .change_window_icon => |icon| {
-                    log.info("OSC 1 (change icon) received and ignored icon={s}", .{icon});
+                    if (!std.unicode.utf8ValidateSlice(icon)) {
+                        log.warn("change icon request: invalid utf-8, ignoring request", .{});
+                        return;
+                    }
+
+                    try self.handler.vt(.window_title, .{ .title = icon });
                 },
 
                 .clipboard_contents => |clip| {

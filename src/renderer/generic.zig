@@ -2586,7 +2586,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                     const fg_style = style.fg(.{
                         .default = foreground,
                         .palette = color_palette,
-                        .bold = self.config.bold_color,
+                        .bold = if (self.config.bold_color) |bc| bc.value else null,
                     });
 
                     // The final background color for the cell.
@@ -2853,7 +2853,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                             const fg_style = sty.fg(.{
                                 .default = foreground,
                                 .palette = color_palette,
-                                .bold = self.config.bold_color,
+                                .bold = if (self.config.bold_color) |bc| bc.value else null,
                             });
                             const bg_style = sty.bg(
                                 screen.cursor.page_cell,
@@ -2905,7 +2905,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                         const fg_style = sty.fg(.{
                             .default = foreground,
                             .palette = color_palette,
-                            .bold = self.config.bold_color,
+                            .bold = if (self.config.bold_color) |bc| bc.value else null,
                         });
                         const bg_style = sty.bg(
                             screen.cursor.page_cell,

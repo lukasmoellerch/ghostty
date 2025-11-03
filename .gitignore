@@ -12,6 +12,8 @@ zig-cache/
 zig-out/
 /result*
 example/*.wasm
+packages/wasm-api/wasm/
+node_modules/
 test/ghostty
 test/cases/**/*.actual.png
 flatpak/builddir/

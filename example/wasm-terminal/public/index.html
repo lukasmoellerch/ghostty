@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghostty WASM Terminal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: black;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #terminal-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        #scrollback-spacer {
+            width: 1px;
+            pointer-events: none;
+        }
+
+        #terminal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        #input-capture {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            opacity: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="terminal-container">
+        <div id="scrollback-spacer"></div>
+        <canvas id="terminal"></canvas>
+    </div>
+    <textarea id="input-capture" autocomplete="off" autocorrect="off" autocapitalize="off"
+        spellcheck="false"></textarea>
+    <script src="terminal.js"></script>
+</body>
+
+</html>

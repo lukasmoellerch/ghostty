@@ -1,0 +1,7 @@
+packages:
+  - packages/wasm-api
+  - packages/dom-terminal
+  - packages/nextjs-example
+
+ignoredBuiltDependencies:
+  - node-pty

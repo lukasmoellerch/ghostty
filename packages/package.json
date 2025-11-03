@@ -1,0 +1,32 @@
+{
+  "name": "@ghostty/packages",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ghostty terminal packages monorepo",
+  "workspaces": [
+    "wasm-api",
+    "dom-terminal",
+    "nextjs-example"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:wasm-api": "npm run build -w @ghostty/wasm-api",
+    "build:dom-terminal": "npm run build -w @ghostty/dom-terminal",
+    "clean": "npm run clean --workspaces --if-present",
+    "dev:example": "npm run dev -w @ghostty/nextjs-example",
+    "build-wasm": "cd .. && zig build lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "keywords": [
+    "ghostty",
+    "terminal",
+    "wasm",
+    "dom"
+  ],
+  "author": "Anysphere Inc.",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

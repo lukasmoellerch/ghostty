@@ -1,0 +1,36 @@
+{
+  "name": "@ghostty/wasm-api",
+  "version": "0.1.0",
+  "description": "TypeScript wrapper for libghostty-vt WebAssembly API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "wasm"
+  ],
+  "scripts": {
+    "build": "npm run build:copy-wasm && npm run build:tsc",
+    "build:wasm": "node scripts/build-wasm.js",
+    "build:tsc": "tsc",
+    "build:copy-wasm": "node scripts/copy-wasm.js",
+    "clean": "rm -rf dist wasm",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ghostty",
+    "terminal",
+    "webassembly",
+    "wasm",
+    "vt"
+  ],
+  "author": "Anysphere Inc.",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

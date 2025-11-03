@@ -57,3 +57,19 @@ pub fn allocUsize() callconv(.c) ?*usize {
 pub fn freeUsize(ptr: ?*usize) callconv(.c) void {
     if (ptr) |p| alloc.destroy(p);
 }
+
+pub fn allocU16() callconv(.c) ?*u16 {
+    return alloc.create(u16) catch return null;
+}
+
+pub fn freeU16(ptr: ?*u16) callconv(.c) void {
+    if (ptr) |p| alloc.destroy(p);
+}
+
+pub fn allocU32() callconv(.c) ?*u32 {
+    return alloc.create(u32) catch return null;
+}
+
+pub fn freeU32(ptr: ?*u32) callconv(.c) void {
+    if (ptr) |p| alloc.destroy(p);
+}

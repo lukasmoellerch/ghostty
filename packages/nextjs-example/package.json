@@ -1,0 +1,32 @@
+{
+  "name": "@ghostty/nextjs-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js example using Ghostty terminal packages",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "dev:next": "next dev",
+    "dev:pty": "npx tsx src/server/pty-server.ts",
+    "build": "next build",
+    "start": "NODE_ENV=production node server.js",
+    "lint": "next lint",
+    "build-wasm": "cd ../.. && zig build lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall"
+  },
+  "dependencies": {
+    "@ghostty/dom-terminal": "workspace:^",
+    "@ghostty/wasm-api": "workspace:^",
+    "next": "^14.0.4",
+    "node-pty": "^1.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@types/react": "^18.2.46",
+    "@types/react-dom": "^18.2.18",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.3.3"
+  }
+}

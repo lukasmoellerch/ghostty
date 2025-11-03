@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghostty VT OSC Parser - WebAssembly Example</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .input-section {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .input-section h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+
+        .output {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            font-size: 14px;
+        }
+
+        .error {
+            background: #fee;
+            border-color: #faa;
+            color: #c00;
+        }
+
+        .status {
+            color: #666;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+
+        .examples {
+            background: #f0f8ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .examples h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .examples ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+
+        .examples li {
+            margin: 5px 0;
+            cursor: pointer;
+            color: #0066cc;
+        }
+
+        .examples li:hover {
+            text-decoration: underline;
+        }
+
+        .examples code {
+            background: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Ghostty VT OSC Parser - WebAssembly Example</h1>
+    <p>This example demonstrates parsing terminal OSC (Operating System Command) sequences using the Ghostty VT
+        WebAssembly module.</p>
+
+    <div class="status" id="status">Loading WebAssembly module...</div>
+
+    <div class="examples">
+        <h3>Example OSC Sequences (click to try)</h3>
+        <ul>
+            <li onclick="loadExample('0;hello')"><code>0;hello</code> - Change window title</li>
+            <li onclick="loadExample('2;My Terminal')"><code>2;My Terminal</code> - Change window icon name</li>
+            <li onclick="loadExample('133;A')"><code>133;A</code> - Prompt start (shell integration)</li>
+            <li onclick="loadExample('133;B')"><code>133;B</code> - Prompt end (shell integration)</li>
+            <li onclick="loadExample('133;C')"><code>133;C</code> - Command start (shell integration)</li>
+            <li onclick="loadExample('133;D')"><code>133;D</code> - Command end (shell integration)</li>
+            <li onclick="loadExample('7;file:///path/to/file')"><code>7;file:///path/to/file</code> - Report PWD</li>
+            <li onclick="loadExample('52;c;aGVsbG8gd29ybGQ=')"><code>52;c;aGVsbG8gd29ybGQ=</code> - Clipboard contents
+            </li>
+            <li onclick="loadExample('8;;id=mylink;https://example.com')"><code>8;;id=mylink;https://example.com</code>
+                - Hyperlink start</li>
+            <li onclick="loadExample('8;;')"><code>8;;</code> - Hyperlink end</li>
+        </ul>
+    </div>
+
+    <div class="input-section">
+        <h3>OSC Sequence Content</h3>
+        <label for="sequence">Enter the OSC sequence content (without ESC] prefix or terminator):</label>
+        <textarea id="sequence" rows="3" disabled>0;hello</textarea>
+        <p style="font-size: 13px; color: #666; margin-top: 5px;">The parser runs live as you type. Full sequence would
+            be: ESC]&lt;content&gt;BEL or ESC]&lt;content&gt;ESC\</p>
+    </div>
+
+    <div id="output" class="output">Waiting for input...</div>
+
+    <p><strong>Note:</strong> This example must be served via HTTP (not opened directly as a file). See the README for
+        instructions.</p>
+
+    <script>
+        let wasmInstance = null;
+        let wasmMemory = null;
+
+        async function loadWasm() {
+            try {
+                const response = await fetch('../../zig-out/bin/ghostty-vt.wasm');
+                const wasmBytes = await response.arrayBuffer();
+
+                const wasmModule = await WebAssembly.instantiate(wasmBytes, {
+                    env: {
+                        log: (ptr, len) => {
+                            const bytes = new Uint8Array(wasmModule.instance.exports.memory.buffer, ptr, len);
+                            const text = new TextDecoder().decode(bytes);
+                            console.log('[wasm]', text);
+                        }
+                    }
+                });
+
+                wasmInstance = wasmModule.instance;
+                wasmMemory = wasmInstance.exports.memory;
+
+                return true;
+            } catch (e) {
+                console.error('Failed to load WASM:', e);
+                if (window.location.protocol === 'file:') {
+                    throw new Error('Cannot load WASM from file:// protocol. Please serve via HTTP (see README)');
+                }
+                return false;
+            }
+        }
+
+        function getBuffer() {
+            return wasmMemory.buffer;
+        }
+
+        // OSC command type values from include/ghostty/vt/osc.h
+        const OSC_COMMAND_TYPES = {
+            0: 'INVALID',
+            1: 'CHANGE_WINDOW_TITLE',
+            2: 'CHANGE_WINDOW_ICON',
+            3: 'PROMPT_START',
+            4: 'PROMPT_END',
+            5: 'END_OF_INPUT',
+            6: 'END_OF_COMMAND',
+            7: 'CLIPBOARD_CONTENTS',
+            8: 'REPORT_PWD',
+            9: 'MOUSE_SHAPE',
+            10: 'COLOR_OPERATION',
+            11: 'KITTY_COLOR_PROTOCOL',
+            12: 'SHOW_DESKTOP_NOTIFICATION',
+            13: 'HYPERLINK_START',
+            14: 'HYPERLINK_END',
+            15: 'CONEMU_SLEEP',
+            16: 'CONEMU_SHOW_MESSAGE_BOX',
+            17: 'CONEMU_CHANGE_TAB_TITLE',
+            18: 'CONEMU_PROGRESS_REPORT',
+            19: 'CONEMU_WAIT_INPUT',
+            20: 'CONEMU_GUIMACRO'
+        };
+
+        function getCommandTypeName(type) {
+            return OSC_COMMAND_TYPES[type] || `UNKNOWN(${type})`;
+        }
+
+        function parseOSC() {
+            const outputDiv = document.getElementById('output');
+
+            try {
+                const sequenceText = document.getElementById('sequence').value.trim();
+
+                if (!sequenceText) {
+                    outputDiv.className = 'output';
+                    outputDiv.textContent = 'Enter an OSC sequence to parse...';
+                    return;
+                }
+
+                // Create OSC parser
+                const parserPtrPtr = wasmInstance.exports.ghostty_wasm_alloc_opaque();
+                const result = wasmInstance.exports.ghostty_osc_new(0, parserPtrPtr);
+
+                if (result !== 0) {
+                    throw new Error(`ghostty_osc_new failed with result ${result}`);
+                }
+
+                const parserPtr = new DataView(getBuffer()).getUint32(parserPtrPtr, true);
+
+                // Feed each byte to the parser
+                const bytes = new TextEncoder().encode(sequenceText);
+                for (let i = 0; i < bytes.length; i++) {
+                    wasmInstance.exports.ghostty_osc_next(parserPtr, bytes[i]);
+                }
+
+                // End parsing with BEL terminator (0x07)
+                // Note: We could also use ST terminator (0x5C after ESC)
+                const commandPtr = wasmInstance.exports.ghostty_osc_end(parserPtr, 0x07);
+
+                // Get command type
+                const commandType = wasmInstance.exports.ghostty_osc_command_type(commandPtr);
+
+                // Build output
+                let output = 'Parsing OSC sequence:\n';
+                output += 'ESC]' + sequenceText + '\\x07\n\n';
+                output += `Command Type: ${getCommandTypeName(commandType)} (${commandType})\n\n`;
+
+                // Try to extract command-specific data
+                if (commandType === 1) { // CHANGE_WINDOW_TITLE
+                    const titlePtrPtr = wasmInstance.exports.ghostty_wasm_alloc_opaque();
+                    const success = wasmInstance.exports.ghostty_osc_command_data(
+                        commandPtr,
+                        1, // GHOSTTY_OSC_DATA_CHANGE_WINDOW_TITLE_STR
+                        titlePtrPtr
+                    );
+
+                    if (success) {
+                        const titlePtr = new DataView(getBuffer()).getUint32(titlePtrPtr, true);
+
+                        // Read null-terminated string
+                        const titleBytes = [];
+                        let offset = 0;
+                        while (true) {
+                            const byte = new Uint8Array(getBuffer())[titlePtr + offset];
+                            if (byte === 0) break;
+                            titleBytes.push(byte);
+                            offset++;
+                        }
+
+                        const title = new TextDecoder().decode(new Uint8Array(titleBytes));
+                        output += `Extracted Data:\n`;
+                        output += `  Window Title: "${title}"\n`;
+                    } else {
+                        output += 'Failed to extract window title data\n';
+                    }
+                } else if (commandType === 3) { // PROMPT_START
+                    output += 'Command Data:\n';
+                    output += '  Shell integration: Mark start of prompt\n';
+                } else if (commandType === 4) { // PROMPT_END
+                    output += 'Command Data:\n';
+                    output += '  Shell integration: Mark end of prompt\n';
+                } else if (commandType === 5) { // END_OF_INPUT
+                    output += 'Command Data:\n';
+                    output += '  Shell integration: Mark end of command input\n';
+                } else if (commandType === 6) { // END_OF_COMMAND
+                    output += 'Command Data:\n';
+                    output += '  Shell integration: Mark end of command execution\n';
+                } else if (commandType === 13) { // HYPERLINK_START
+                    output += 'Command Data:\n';
+                    output += '  Hyperlink: Start of clickable link\n';
+                } else if (commandType === 14) { // HYPERLINK_END
+                    output += 'Command Data:\n';
+                    output += '  Hyperlink: End of clickable link\n';
+                } else if (commandType === 0) { // INVALID
+                    output += 'This OSC sequence is invalid or not recognized.\n';
+                } else {
+                    output += 'This command type is recognized but additional data extraction\n';
+                    output += 'is not implemented in this example.\n';
+                }
+
+                outputDiv.className = 'output';
+                outputDiv.textContent = output;
+
+                // Cleanup
+                wasmInstance.exports.ghostty_osc_free(parserPtr);
+
+            } catch (e) {
+                console.error('Parse error:', e);
+                outputDiv.className = 'output error';
+                outputDiv.textContent = `Error: ${e.message}\n\nStack trace:\n${e.stack}`;
+            }
+        }
+
+        function loadExample(sequence) {
+            const sequenceInput = document.getElementById('sequence');
+            sequenceInput.value = sequence;
+            parseOSC();
+        }
+
+        async function init() {
+            const statusDiv = document.getElementById('status');
+            const sequenceInput = document.getElementById('sequence');
+
+            try {
+                statusDiv.textContent = 'Loading WebAssembly module...';
+
+                const loaded = await loadWasm();
+                if (!loaded) {
+                    throw new Error('Failed to load WebAssembly module');
+                }
+
+                statusDiv.textContent = '';
+                sequenceInput.disabled = false;
+
+                // Parse live as user types
+                sequenceInput.addEventListener('input', parseOSC);
+
+                // Parse the default example on load
+                parseOSC();
+            } catch (e) {
+                statusDiv.textContent = `Error: ${e.message}`;
+                statusDiv.style.color = '#c00';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+
+</html>
